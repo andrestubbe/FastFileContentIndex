@@ -1,4 +1,4 @@
-﻿# FastFileContentIndex â€” High-speed in-file text indexing [v0.1.0]
+# FastFileContentIndex — High-speed in-file text indexing [v0.1.0]
 
 **N-Gram based string indexer for ultra-fast full-text code search across gigabytes of files.**
 
