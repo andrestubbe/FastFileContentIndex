@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -99,7 +100,47 @@ class FastFileContentIndexTest {
 
         List<ContentMatchResult> results = index.search("High-performance");
         assertFalse(results.isEmpty());
-        assertEquals(2, results.get(0).lineNumber());
-        assertEquals("Zeile 2: ⚡ High-performance FastJava", results.get(0).lineSnippet().trim());
+        ContentMatchResult r = results.get(0);
+        assertEquals(2, r.lineNumber());
+        assertEquals("Zeile 2: ⚡ High-performance FastJava", r.lineSnippet().trim());
+    }
+
+    @Test
+    void testCrossChunkOverlapMatch(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("OverlapTest.txt");
+        // Create padding exact size to push target query across 64 KiB boundary
+        byte[] padding = new byte[65530];
+        Arrays.fill(padding, (byte) 'A');
+        String paddingStr = new String(padding, StandardCharsets.US_ASCII);
+        String fullContent = paddingStr + "\nPREFIX_OVERLAP_QUERY_TARGET_SUFFIX\n";
+
+        Files.writeString(file, fullContent, StandardCharsets.UTF_8);
+        index.indexFile(file.toFile());
+
+        List<ContentMatchResult> results = index.search("OVERLAP_QUERY_TARGET");
+        assertFalse(results.isEmpty(), "Cross-chunk overlap match should be successfully found!");
+    }
+
+    @Test
+    void testBinaryImageExclusion(@TempDir Path tempDir) throws IOException {
+        Path imageFile = tempDir.resolve("test_image.png");
+        Files.writeString(imageFile, "PNG_HEADER_DATA_12345");
+
+        index.indexDirectory(tempDir.toFile());
+        assertEquals(0, index.getIndexedFileCount(), "Raw .png image files must be excluded from direct indexing");
+    }
+
+    @Test
+    void testCaseInsensitiveSearch(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("CaseTest.txt");
+        Files.writeString(file, "FASTJAVA SIMD ACCELERATED ENGINE");
+
+        index.indexFile(file.toFile());
+
+        List<ContentMatchResult> r1 = index.search("fastjava");
+        List<ContentMatchResult> r2 = index.search("Accelerated");
+
+        assertFalse(r1.isEmpty());
+        assertFalse(r2.isEmpty());
     }
 }
