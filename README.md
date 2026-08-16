@@ -18,6 +18,51 @@ Unlike heavy solutions (Elasticsearch, Lucene) that heavily tokenize and parse t
 
 ---
 
+
+---
+
+## Quick Start — Example
+
+```java
+import fastfilecontentindex.FastFileContentIndex;
+import fastfilecontentindex.ContentMatchResult;
+import fastfileindex.FastFileIndex;
+import fastansi.FastANSI;
+
+import java.io.File;
+import java.util.List;
+
+public class FastContentIndexDemo {
+    public static void main(String[] args) throws Exception {
+        File targetDir = new File(".");
+
+        // STEP 1: FastFileIndex — Instant Memory-Mapped Directory Tree Discovery
+        System.out.println("--- Step 1: FastFileIndex Directory Tree Discovery ---");
+        FastFileIndex.build(new String[]{targetDir.getAbsolutePath()});
+        System.out.printf("Scanned %d file entries.%n%n", FastFileIndex.getEntryCount());
+
+        // STEP 2: FastFileContentIndex — FastIO Direct Streaming & 64-Bit Bloom Indexing
+        System.out.println("--- Step 2: 3-Gram Bloom Filter Chunk Indexing ---");
+        FastFileContentIndex index = new FastFileContentIndex();
+        index.indexDirectory(targetDir);
+        System.out.printf("Indexed %d files (%d chunks of 64 KiB).%n%n",
+            index.getIndexedFileCount(), index.getIndexedChunkCount());
+
+        // STEP 3: Sub-Millisecond SIMD Candidate Search & FastANSI Highlighting
+        System.out.println("--- Step 3: Sub-Millisecond SIMD Content Search ---");
+        List<ContentMatchResult> results = index.search("TrigramBloomFilter");
+
+        for (ContentMatchResult r : results) {
+            double ms = r.searchTimeNs() / 1_000_000.0;
+            System.out.printf("[%s%5.2f ms%s] %s:%d:%d -> %s%n",
+                FastANSI.fg(0x9E, 0xCE, 0x6A), ms, FastANSI.RESET,
+                r.filePath(), r.lineNumber(), r.charOffset(), r.lineSnippet().trim());
+        }
+    }
+}
+```
+
+
 ---
 
 ## Table of Contents
@@ -103,48 +148,6 @@ IndexerBenchmark.benchmarkFastFileContentIndexQuery  thrpt    3  139860.251 ± 6
 | **[`FastMemory`](https://github.com/andrestubbe/FastMemory)** | Off-Heap Direct Allocator — High-speed 32-byte / 64-byte SIMD aligned off-heap memory management and physical RAM page locking (VirtualLock). |
 | **[`FastSIMD`](https://github.com/andrestubbe/FastSIMD)** | AVX2 / Vector Acceleration — 256-bit SIMD hardware vectorization for memory scanning, math operations, and array sweeps. |
 | **[`FastBytes`](https://github.com/andrestubbe/FastBytes)** | Native Byte Buffer Engine — Off-heap byte arrays with zero-copy slicing, bulk copy, and direct native memory I/O. |
-
-
-## Quick Start — Example
-
-```java
-import fastfilecontentindex.FastFileContentIndex;
-import fastfilecontentindex.ContentMatchResult;
-import fastfileindex.FastFileIndex;
-import fastansi.FastANSI;
-
-import java.io.File;
-import java.util.List;
-
-public class FastContentIndexDemo {
-    public static void main(String[] args) throws Exception {
-        File targetDir = new File(".");
-
-        // STEP 1: FastFileIndex — Instant Memory-Mapped Directory Tree Discovery
-        System.out.println("--- Step 1: FastFileIndex Directory Tree Discovery ---");
-        FastFileIndex.build(new String[]{targetDir.getAbsolutePath()});
-        System.out.printf("Scanned %d file entries.%n%n", FastFileIndex.getEntryCount());
-
-        // STEP 2: FastFileContentIndex — FastIO Direct Streaming & 64-Bit Bloom Indexing
-        System.out.println("--- Step 2: 3-Gram Bloom Filter Chunk Indexing ---");
-        FastFileContentIndex index = new FastFileContentIndex();
-        index.indexDirectory(targetDir);
-        System.out.printf("Indexed %d files (%d chunks of 64 KiB).%n%n",
-            index.getIndexedFileCount(), index.getIndexedChunkCount());
-
-        // STEP 3: Sub-Millisecond SIMD Candidate Search & FastANSI Highlighting
-        System.out.println("--- Step 3: Sub-Millisecond SIMD Content Search ---");
-        List<ContentMatchResult> results = index.search("TrigramBloomFilter");
-
-        for (ContentMatchResult r : results) {
-            double ms = r.searchTimeNs() / 1_000_000.0;
-            System.out.printf("[%s%5.2f ms%s] %s:%d:%d -> %s%n",
-                FastANSI.fg(0x9E, 0xCE, 0x6A), ms, FastANSI.RESET,
-                r.filePath(), r.lineNumber(), r.charOffset(), r.lineSnippet().trim());
-        }
-    }
-}
-```
 
 ---
 
