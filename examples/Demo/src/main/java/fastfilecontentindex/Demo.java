@@ -11,8 +11,9 @@ public class Demo {
         System.out.println("   FastFileContentIndex 0.1.0 Multi-Step Demo");
         System.out.println("=================================================\n");
 
-        File targetDir = new File("src");
-        if (!targetDir.exists()) {
+        // Target directory: Parent FastJava workspace containing all 90+ FastJava repos
+        File targetDir = new File("../..");
+        if (!targetDir.exists() || !targetDir.isDirectory()) {
             targetDir = new File("..");
         }
 

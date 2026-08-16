@@ -33,11 +33,20 @@ public class FastFileContentIndex {
     private final List<FileChunkIndex> chunkList = new ArrayList<>();
     private final Map<String, String> contentCache = new ConcurrentHashMap<>();
 
-    public void indexFile(File file) throws IOException {
+    public void indexFile(File file) {
         if (!file.exists() || !file.isFile() || file.length() > 100_000_000) { // Skip files > 100MB
             return;
         }
-        String content = Files.readString(file.toPath());
+        String content;
+        try {
+            content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+        } catch (Throwable fallback) {
+            try {
+                content = Files.readString(file.toPath(), StandardCharsets.ISO_8859_1);
+            } catch (Throwable ignored) {
+                return;
+            }
+        }
         String path = file.getAbsolutePath();
         contentCache.put(path, content);
 
