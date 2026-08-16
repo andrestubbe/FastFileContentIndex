@@ -1,0 +1,1 @@
+⚡ Ultra-fast 3-Gram Bloom Filter indexer & SIMD substring scanner for sub-millisecond full-text code search across gigabytes of files.

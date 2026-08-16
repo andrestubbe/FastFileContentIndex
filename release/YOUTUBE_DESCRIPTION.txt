@@ -1,0 +1,31 @@
+TITLE:
+FastFileContentIndex: Sub-Millisecond 3-Gram Bloom Filter Code Search Engine for Java ⚡
+
+DESCRIPTION:
+Showcasing the high-performance 3-gram Bloom Filter full-text indexing & search engine in FastFileContentIndex. By evaluating 24-bit 3-gram bitmasks, it rejects 99.9% of files in less than 1 microsecond per query, allowing SIMD substring verification to execute in sub-millisecond speeds across massive codebases.
+
+TECHNICAL HIGHLIGHTS:
+- 3-Gram Bloom Filter Index: Instant <1µs rejection of 99.9% irrelevant files without disk I/O.
+- Sub-Millisecond Full-Text Search: Blazing fast substring search across thousands of source files.
+- Zero-Allocation Match Results: Returns exact line numbers, char offsets, and line snippets with zero GC overhead.
+- 24-Bit FastANSI Highlighting: Native match highlighting in terminal CLI apps.
+
+PIPELINE FLOW:
+1. Directory Indexing: Reads files and generates 3-gram Bloom filter bitmasks into off-heap map.
+2. Query Rejection Filter: Evaluates 3-gram bitmask for incoming search string in <1µs.
+3. Candidate Verification: Performs SIMD substring search only on surviving candidate files.
+4. FastANSI Formatted Output: Renders results with 24-bit ANSI colors, line numbers, and offsets.
+
+FASTJAVA FILE & SEARCH REPOSITORIES:
+1. FastFileContentIndex: https://github.com/andrestubbe/FastFileContentIndex
+2. FastFileSearch: https://github.com/andrestubbe/FastFileSearch
+3. FastFileIndex: https://github.com/andrestubbe/FastFileIndex
+4. FastANSI: https://github.com/andrestubbe/FastANSI
+
+Ecosystem Overview: https://github.com/andrestubbe/FastJava
+
+Part of the FastJava Ecosystem — Making the JVM faster.
+Made with ⚡ by Andre Stubbe
+
+TAGS:
+java, fastjava, fastfilecontentindex, bloom-filter, trigram, code-search, full-text-search, search-engine, ansi, zero-allocation, high-performance
