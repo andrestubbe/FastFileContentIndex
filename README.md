@@ -110,16 +110,16 @@ IndexerBenchmark.benchmarkFastFileContentIndexQuery  thrpt    3  139860.251 ± 6
 `FastFileContentIndex` operates as the second high-speed filtering layer in the unified FastJava Search & AI Infrastructure:
 
 ```
-┌─────────────────┐       ┌──────────────────────┐       ┌──────────────────┐
-│  FastFileIndex  │ ────► │ FastFileContentIndex │ ────► │   FastTokenize   │
-│ (Tree / mmap)   │       │ (3-Gram Bloom <1µs)  │       │ (Single-Pass O(n))│
-└─────────────────┘       └──────────────────────┘       └──────────────────┘
-                                                                   │
-                                                                   ▼
-┌─────────────────┐       ┌──────────────────────┐       ┌──────────────────┐
-│   FastAIRag     │ ◄──── │    FastAIVectorDB    │ ◄──── │ FastContentChunk │
-│ (LLM Context)   │       │  (SIMD Vector Match) │       │ (Syntax Chunking)│
-└─────────────────┘       └──────────────────────┘       └──────────────────┘
+┌──────────────────┐       ┌────────────────────────┐       ┌────────────────────┐
+│   FastFileIndex  │ ────► │  FastFileContentIndex  │ ────► │    FastTokenize    │
+│  (Tree / mmap)   │       │  (3-Gram Bloom < 1µs)  │       │ (Single-Pass O(n)) │
+└──────────────────┘       └────────────────────────┘       └────────────────────┘
+                                                                       │
+                                                                       ▼
+┌──────────────────┐       ┌────────────────────────┐       ┌────────────────────┐
+│    FastAIRag     │ ◄──── │     FastAIVectorDB     │ ◄──── │  FastContentChunk  │
+│  (LLM Context)   │       │  (SIMD Vector Match)   │       │ (Syntax Chunking)  │
+└──────────────────┘       └────────────────────────┘       └────────────────────┘
 ```
 
 ---
