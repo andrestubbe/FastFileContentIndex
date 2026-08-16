@@ -23,22 +23,36 @@ Unlike heavy solutions (Elasticsearch, Lucene) that heavily tokenize and parse t
 ```java
 import fastfilecontentindex.FastFileContentIndex;
 import fastfilecontentindex.ContentMatchResult;
+import fastfileindex.FastFileIndex;
+import fastansi.FastANSI;
+
 import java.io.File;
 import java.util.List;
 
 public class FastContentIndexDemo {
     public static void main(String[] args) throws Exception {
+        File targetDir = new File(".");
+
+        // STEP 1: FastFileIndex — Instant Memory-Mapped Directory Tree Discovery
+        System.out.println("--- Step 1: FastFileIndex Directory Tree Discovery ---");
+        FastFileIndex.build(new String[]{targetDir.getAbsolutePath()});
+        System.out.printf("Scanned %d file entries.%n%n", FastFileIndex.getEntryCount());
+
+        // STEP 2: FastFileContentIndex — FastIO Direct Streaming & 64-Bit Bloom Indexing
+        System.out.println("--- Step 2: 3-Gram Bloom Filter Chunk Indexing ---");
         FastFileContentIndex index = new FastFileContentIndex();
+        index.indexDirectory(targetDir);
+        System.out.printf("Indexed %d files (%d chunks of 64 KiB).%n%n",
+            index.getIndexedFileCount(), index.getIndexedChunkCount());
 
-        // 1. Index codebase directory into 3-gram bloom bitmasks
-        index.indexDirectory(new File("."));
-
-        // 2. Sub-millisecond full-text search
+        // STEP 3: Sub-Millisecond SIMD Candidate Search & FastANSI Highlighting
+        System.out.println("--- Step 3: Sub-Millisecond SIMD Content Search ---");
         List<ContentMatchResult> results = index.search("TrigramBloomFilter");
 
         for (ContentMatchResult r : results) {
-            System.out.printf("[%5.2f ms] %s:%d:%d -> %s%n",
-                r.searchTimeNs() / 1_000_000.0,
+            double ms = r.searchTimeNs() / 1_000_000.0;
+            System.out.printf("[%s%5.2f ms%s] %s:%d:%d -> %s%n",
+                FastANSI.fg(0x9E, 0xCE, 0x6A), ms, FastANSI.RESET,
                 r.filePath(), r.lineNumber(), r.charOffset(), r.lineSnippet().trim());
         }
     }
