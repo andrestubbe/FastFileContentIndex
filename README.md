@@ -74,21 +74,24 @@ Traditional full-text search engines (Lucene, Elasticsearch) rely on heavy inver
 
 ## Key Features
 
-- ⚡ **3-Gram Bloom Filter Rejection** — Fast bitmask rejection per query without touching disk contents.
-- 🔍 **Sub-Millisecond Search** — Blazing fast full-text substring queries across thousands of source code files.
+- ⚡ **3-Gram Bloom Filter Rejection** — Fast 64-bit bitmask rejection per 64 KiB chunk without touching disk contents.
+- 🚀 **FastIO Native JNI Direct I/O** — Leverages `FastIO` JNI unbuffered native file reading with `allocateAlignedBuffer()` for direct, zero-copy sector streaming.
+- 🔍 **Sub-Millisecond SIMD Search** — Blazing fast full-text substring queries using 256-bit / 32-byte AVX2 vector loads (`FastSIMD` & `FastBytes`).
+- 🎯 **O(log N) Zero-Alloc Result Extraction** — Binary-searchable pre-indexed line/char offsets with zero temporary `String` or `getBytes()` allocations during scan loops.
 - 🎨 **FastANSI Integration** — Native support for 24-bit TrueColor terminal output formatting and match highlighting.
-- 🧱 **FastJava Stack Compatibility** — Integrates seamlessly with `FastFileIndex`, `FastFileSearch`, `FastBytes`, and `FastSIMD`.
+- 🧱 **FastJava Stack Compatibility** — Integrates seamlessly with `FastFileIndex`, `FastIO`, `FastContentParse`, `FastBytes`, and `FastSIMD`.
 
 ---
 
 ## Core Engineering Pillars
 
-`FastFileContentIndex` achieves its extreme performance by combining 4 complementary low-level technologies:
+`FastFileContentIndex` achieves its extreme performance by combining 5 complementary low-level technologies:
 
-1. 🛡️ **3-Gram Bloom Filter Rejection (`TrigramBloomFilter`)**: Generates compact 24-bit 3-gram bitmask signatures that reject non-matching files without touching disk contents.
-2. ⚡ **SIMD AVX2 Substring Search (`FastBytes` & `FastContentScanner`)**: Executes 256-bit / 32-byte AVX2 vector loads on candidate file buffers.
-3. 🧩 **64 KB Block Chunking & Incremental Indexing**: Splits large documents, PDFs, and log files into 64KB chunks so edits only require re-indexing affected blocks.
-4. 🔍 **Search-as-You-Type Engine**: Delivers zero-latency, sub-millisecond query results optimized for local CLI tools, IDEs, and desktop search apps.
+1. 🚀 **FastIO Native JNI Unbuffered Streaming (`FastIO`)**: Reads raw file chunks using native Windows direct I/O with sector-aligned `allocateAlignedBuffer()` memory blocks, bypassing Java IO buffering overhead.
+2. 🛡️ **64-Bit 3-Gram Bloom Filter Rejection (`TrigramBloomFilter`)**: Generates compact 64-bit 3-gram bitmask signatures directly from raw byte streams (`buildFromBytes`), rejecting non-matching 64 KiB chunks instantly.
+3. ⚡ **SIMD AVX2 Substring Candidate Scan (`FastBytes` & `FastContentScanner`)**: Executes 256-bit / 32-byte AVX2 vector sweeps on candidate byte buffers.
+4. 📏 **UTF-8 Boundary-Aligned Chunking & Overlap Support**: Splits large documents into 64 KiB chunks aligned strictly to UTF-8 continuation-byte boundaries, with 256-byte cross-chunk overlaps so matches across boundaries are never lost.
+5. 🎯 **O(log N) Zero-Allocation Line/Char Mapping**: Uses pre-indexed `int[]` newline byte/char offsets with `Arrays.binarySearch()` for instant line/col/snippet extraction without allocating temporary `String` or `byte[]` objects.
 
 ---
 
@@ -121,16 +124,16 @@ IndexerBenchmark.benchmarkFastFileContentIndexQuery  thrpt    3  139860.251 ± 6
 `FastFileContentIndex` operates as the second high-speed filtering layer in the unified FastJava Search & AI Infrastructure:
 
 ```
-┌──────────────────┐       ┌────────────────────────┐       ┌────────────────────┐
-│   FastFileIndex  │ ────► │  FastFileContentIndex  │ ────► │    FastTokenize    │
-│  (Tree / mmap)   │       │  (3-Gram Bloom < 1µs)  │       │ (Single-Pass O(n)) │
-└──────────────────┘       └────────────────────────┘       └────────────────────┘
-                                                                       │
-                                                                       ▼
-┌──────────────────┐       ┌────────────────────────┐       ┌────────────────────┐
-│    FastAIRag     │ ◄──── │     FastAIVectorDB     │ ◄──── │  FastContentChunk  │
-│  (LLM Context)   │       │  (SIMD Vector Match)   │       │ (Syntax Chunking)  │
-└──────────────────┘       └────────────────────────┘       └────────────────────┘
+┌──────────────────┐       ┌────────────────────────┐       ┌────────────────────────┐       ┌────────────────────┐
+│   FastFileIndex  │ ────► │         FastIO         │ ────► │  FastFileContentIndex  │ ────► │    FastTokenize    │
+│  (Tree / mmap)   │       │ (JNI Direct Aligned I/O)│       │  (3-Gram Bloom < 1µs)  │       │ (Single-Pass O(n)) │
+└──────────────────┘       └────────────────────────┘       └────────────────────────┘       └────────────────────┘
+                                                                                                        │
+                                                                                                        ▼
+┌──────────────────┐       ┌────────────────────────┐       ┌────────────────────────┐       ┌────────────────────┐
+│    FastAIRag     │ ◄──── │     FastAIVectorDB     │ ◄──── │    FastContentParse    │ ◄──── │  FastContentChunk  │
+│  (LLM Context)   │       │  (SIMD Vector Match)   │       │   (PDF/Doc Extract)    │       │ (Syntax Chunking)  │
+└──────────────────┘       └────────────────────────┘       └────────────────────────┘       └────────────────────┘
 ```
 
 ---
