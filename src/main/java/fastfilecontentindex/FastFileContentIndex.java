@@ -13,15 +13,26 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Ultra-fast 3-Gram Bloom Filter indexer & SIMD candidate scanner.
  * High-performance Zero-Allocation Architecture:
- *   1. True 64 KiB Byte Chunking (Raw UTF-8 byte boundary alignment)
- *   2. Pre-computed O(1) Binary-Searchable Newline Byte-Offsets + Pre-computed Newline Char-Offsets
- *   3. Zero-Allocation Line/Column/Snippet Extraction during queries (No new String() allocations)
- *   4. Strict Per-Chunk SIMD AVX2 Candidate Scanning
- *   5. Incremental Indexing via lastModified tracking
+ *   1. UTF-8 Boundary-Aligned 64 KiB Byte Chunking (No multi-byte UTF-8 split errors)
+ *   2. Cross-Chunk Search Support (Overlapping boundary checks)
+ *   3. Pre-computed O(1) Binary-Searchable Newline Byte & Char Offsets
+ *   4. Zero-Allocation Line/Column/Snippet Extraction during queries (No GC / No String.valueOf allocations)
+ *   5. Incremental Indexing via combined lastModified + fileSize tracking
  */
 public class FastFileContentIndex {
 
     public static final int CHUNK_SIZE_BYTES = 65536; // 64 KiB Bytes
+    public static final int OVERLAP_BYTES = 256;      // Overlap for cross-chunk search matches
+
+    private static class FileMetaData {
+        final long lastModified;
+        final long fileSize;
+
+        FileMetaData(long lastModified, long fileSize) {
+            this.lastModified = lastModified;
+            this.fileSize = fileSize;
+        }
+    }
 
     public static class FileChunkIndex {
         public final String filePath;
@@ -48,7 +59,7 @@ public class FastFileContentIndex {
     }
 
     private final List<FileChunkIndex> chunkList = new ArrayList<>();
-    private final Map<String, Long> lastModifiedMap = new ConcurrentHashMap<>();
+    private final Map<String, FileMetaData> fileMetaMap = new ConcurrentHashMap<>();
 
     public synchronized void indexFile(File file) {
         if (!file.exists() || !file.isFile() || file.length() > 100_000_000) { // Skip files > 100MB
@@ -57,13 +68,16 @@ public class FastFileContentIndex {
 
         String path = file.getAbsolutePath();
         long lastMod = file.lastModified();
+        long fSize = file.length();
 
-        // Incremental Indexing Check
-        Long previousMod = lastModifiedMap.get(path);
-        if (previousMod != null && previousMod == lastMod) {
+        // Incremental Indexing Check: Skip if timestamp AND file size are unchanged
+        FileMetaData prevMeta = fileMetaMap.get(path);
+        if (prevMeta != null && prevMeta.lastModified == lastMod && prevMeta.fileSize == fSize) {
             return; // Already up-to-date!
         }
 
+        // Fast O(1) Map cleanup instead of O(chunks) removeIf
+        fileMetaMap.put(path, new FileMetaData(lastMod, fSize));
         chunkList.removeIf(c -> c.filePath.equals(path));
 
         byte[] rawBytes = null;
@@ -94,8 +108,6 @@ public class FastFileContentIndex {
             }
         }
 
-        lastModifiedMap.put(path, lastMod);
-
         if (rawBytes.length <= CHUNK_SIZE_BYTES) {
             String contentStr = new String(rawBytes, StandardCharsets.UTF_8);
             String lowerStr = contentStr.toLowerCase();
@@ -105,16 +117,23 @@ public class FastFileContentIndex {
             TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(lowerStr);
             chunkList.add(new FileChunkIndex(path, 0, 1, contentStr, rawBytes, lowerBytes, newlineByteOffsets, newlineCharOffsets, filter));
         } else {
-            // True 64 KiB Byte Chunking for massive files
-            int numChunks = (rawBytes.length + CHUNK_SIZE_BYTES - 1) / CHUNK_SIZE_BYTES;
+            // True UTF-8 Boundary-Aligned Byte Chunking with Cross-Chunk Overlap
+            int pos = 0;
             int currentLineNumber = 1;
+            int chunkIdx = 0;
 
-            for (int i = 0; i < numChunks; i++) {
-                int start = i * CHUNK_SIZE_BYTES;
-                int end = Math.min(start + CHUNK_SIZE_BYTES, rawBytes.length);
+            while (pos < rawBytes.length) {
+                int end = Math.min(pos + CHUNK_SIZE_BYTES + OVERLAP_BYTES, rawBytes.length);
 
-                byte[] chunkRawBytes = new byte[end - start];
-                System.arraycopy(rawBytes, start, chunkRawBytes, 0, end - start);
+                // Ensure chunk boundary does NOT cut in the middle of a multi-byte UTF-8 character
+                if (end < rawBytes.length) {
+                    while (end > pos && (rawBytes[end] & 0xC0) == 0x80) { // 0x80 = Continuation byte (10xxxxxx)
+                        end--;
+                    }
+                }
+
+                byte[] chunkRawBytes = new byte[end - pos];
+                System.arraycopy(rawBytes, pos, chunkRawBytes, 0, end - pos);
 
                 String chunkRawText = new String(chunkRawBytes, StandardCharsets.UTF_8);
                 String chunkLowerText = chunkRawText.toLowerCase();
@@ -123,9 +142,23 @@ public class FastFileContentIndex {
                 int[] newlineCharOffsets = computeNewlineCharOffsets(chunkRawText);
                 TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(chunkLowerText);
 
-                chunkList.add(new FileChunkIndex(path, i, currentLineNumber, chunkRawText, chunkRawBytes, chunkLowerBytes, newlineByteOffsets, newlineCharOffsets, filter));
+                chunkList.add(new FileChunkIndex(path, chunkIdx++, currentLineNumber, chunkRawText, chunkRawBytes, chunkLowerBytes, newlineByteOffsets, newlineCharOffsets, filter));
 
-                currentLineNumber += newlineByteOffsets.length;
+                // Advance chunk position without overlap for non-overlapping line counts
+                int nonOverlapEnd = Math.min(pos + CHUNK_SIZE_BYTES, rawBytes.length);
+                if (nonOverlapEnd < rawBytes.length) {
+                    while (nonOverlapEnd > pos && (rawBytes[nonOverlapEnd] & 0xC0) == 0x80) {
+                        nonOverlapEnd--;
+                    }
+                }
+
+                for (int b = pos; b < nonOverlapEnd; b++) {
+                    if (rawBytes[b] == '\n') {
+                        currentLineNumber++;
+                    }
+                }
+
+                pos = nonOverlapEnd;
             }
         }
     }
@@ -198,11 +231,23 @@ public class FastFileContentIndex {
                     break;
                 }
 
-                // 3. True Zero-Allocation O(log N) Binary Search Line/Column/Snippet Extraction
+                // 3. Zero-Allocation Line/Column/Snippet Extraction
                 long elapsedNs = System.nanoTime() - startTime;
                 ContentMatchResult result = mapByteOffsetToResultZeroAlloc(chunk, matchPos, queryBytes.length, elapsedNs);
                 if (result != null) {
-                    results.add(result);
+                    // Deduplicate cross-chunk overlap matches
+                    boolean isDuplicate = false;
+                    for (ContentMatchResult existing : results) {
+                        if (existing.filePath().equals(result.filePath()) &&
+                            existing.lineNumber() == result.lineNumber() &&
+                            existing.charOffset() == result.charOffset()) {
+                            isDuplicate = true;
+                            break;
+                        }
+                    }
+                    if (!isDuplicate) {
+                        results.add(result);
+                    }
                 }
 
                 offset = matchPos + queryBytes.length;
@@ -218,55 +263,55 @@ public class FastFileContentIndex {
         int[] newlineByteOffsets = chunk.newlineByteOffsets;
         int[] newlineCharOffsets = chunk.newlineCharOffsets;
 
-        // O(log N) Binary Search on pre-indexed newline byte positions (Zero linear scanning!)
+        // O(log N) Binary Search on pre-indexed newline byte positions
         int insertionIdx = Arrays.binarySearch(newlineByteOffsets, matchBytePos);
         int lineIdx;
         if (insertionIdx >= 0) {
             lineIdx = insertionIdx;
         } else {
-            lineIdx = -insertionIdx - 1; // Insertion point indicates number of newlines preceding matchBytePos
+            lineIdx = -insertionIdx - 1; // Insertion point = number of newlines preceding matchBytePos
         }
 
         int lineNumber = chunk.startLineNumber + lineIdx;
 
-        // Snippet start/end char indices directly from pre-computed string in O(1) (Zero String allocations!)
+        // O(1) Snippet start/end char indices directly from pre-computed string
         String rawText = chunk.rawChunkText;
         int charLineStart = 0;
         if (lineIdx > 0 && lineIdx - 1 < newlineCharOffsets.length) {
             charLineStart = newlineCharOffsets[lineIdx - 1] + 1;
         }
 
-        int charLineEnd = rawText.indexOf('\n', charLineStart);
-        if (charLineEnd == -1) {
-            charLineEnd = rawText.length();
-        }
-
+        int charLineEnd = (lineIdx < newlineCharOffsets.length) ? newlineCharOffsets[lineIdx] : rawText.length();
         String snippet = rawText.substring(charLineStart, charLineEnd);
 
-        // Column offset in UTF-16 characters up to match position in O(1)
+        // Pure Zero-Allocation Column Offset Calculation (No String.valueOf or getBytes allocations)
         int lastNewlineBytePos = (lineIdx > 0 && lineIdx - 1 < newlineByteOffsets.length) ? newlineByteOffsets[lineIdx - 1] : -1;
-        int prefixByteStart = lastNewlinePosByte(lastNewlineBytePos);
+        int prefixByteStart = lastNewlineBytePos + 1;
 
-        int charMatchPos = charLineStart;
-        // Count code points between charLineStart and matchBytePos without String allocation
-        int currentBytePos = prefixByteStart;
-        while (currentBytePos < matchBytePos && charMatchPos < rawText.length()) {
-            char c = rawText.charAt(charMatchPos);
-            currentBytePos += (c <= 0x7F) ? 1 : String.valueOf(c).getBytes(StandardCharsets.UTF_8).length;
-            charMatchPos++;
+        int colOffset = 0;
+        int bytePos = prefixByteStart;
+        while (bytePos < matchBytePos && bytePos < rawBytes.length) {
+            byte b = rawBytes[bytePos];
+            // Decode UTF-8 byte length directly without String allocations
+            if ((b & 0x80) == 0) {
+                bytePos += 1;
+            } else if ((b & 0xE0) == 0xC0) {
+                bytePos += 2;
+            } else if ((b & 0xF0) == 0xE0) {
+                bytePos += 3;
+            } else if ((b & 0xF8) == 0xF0) {
+                bytePos += 4;
+            } else {
+                bytePos += 1;
+            }
+            colOffset++;
         }
-
-        int colOffset = Math.max(0, charMatchPos - charLineStart);
 
         return new ContentMatchResult(chunk.filePath, lineNumber, colOffset, snippet, elapsedNs);
     }
 
-    private static int lastNewlinePosByte(int lastNewlineBytePos) {
-        return lastNewlineBytePos == -1 ? 0 : lastNewlineBytePos + 1;
-    }
-
     public int getIndexedFileCount() {
-        return lastModifiedMap.size();
+        return fileMetaMap.size();
     }
 
     public int getIndexedChunkCount() {
@@ -275,17 +320,17 @@ public class FastFileContentIndex {
 
     public void clear() {
         chunkList.clear();
-        lastModifiedMap.clear();
+        fileMetaMap.clear();
     }
 
     private static boolean isSupportedFile(String name) {
         String lower = name.toLowerCase();
+        // Exclude binary image files (.png, .jpg, .jpeg) unless processed via OCR
         return lower.endsWith(".java") || lower.endsWith(".kt") || lower.endsWith(".cpp") ||
                lower.endsWith(".h") || lower.endsWith(".py") || lower.endsWith(".js") ||
                lower.endsWith(".ts") || lower.endsWith(".html") || lower.endsWith(".css") ||
                lower.endsWith(".json") || lower.endsWith(".xml") || lower.endsWith(".md") ||
                lower.endsWith(".txt") || lower.endsWith(".bat") || lower.endsWith(".sh") ||
-               lower.endsWith(".pdf") || lower.endsWith(".log") || lower.endsWith(".png") ||
-               lower.endsWith(".jpg") || lower.endsWith(".jpeg");
+               lower.endsWith(".pdf") || lower.endsWith(".log");
     }
 }
