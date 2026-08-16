@@ -1,5 +1,8 @@
 package fastfilecontentindex;
 
+import io.github.andrestubbe.fastio.FastFile;
+import io.github.andrestubbe.fastio.FastIO;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.nio.ByteBuffer;
@@ -14,10 +17,10 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Ultra-fast 3-Gram Bloom Filter indexer & SIMD candidate scanner.
  * High-performance Low-Memory Architecture:
- *   1. Streaming FileChannel Chunking (Reads strictly 64 KiB buffer per iteration - No 100MB RAM spikes)
+ *   1. Streaming FastIO Native JNI / FileChannel Chunking (Reads strictly 64 KiB buffer per iteration)
  *   2. UTF-8 Boundary-Aligned 64 KiB Byte Chunking (No multi-byte UTF-8 split errors)
- *   3. True O(1) Per-File Chunk Map Tracking (`fileChunksMap` - No O(n) chunkList.removeIf overhead)
- *   4. Zero-Allocation Line/Column/Snippet Extraction during queries (No GC / No String.valueOf allocations)
+ *   3. True O(1) Per-File Chunk Map Tracking (`fileChunksMap`)
+ *   4. Zero-Allocation Line/Column/Snippet Extraction during queries
  *   5. Strict Per-Chunk SIMD AVX2 Candidate Scanning
  *   6. Incremental Indexing via combined lastModified + fileSize tracking
  */
@@ -60,7 +63,6 @@ public class FastFileContentIndex {
         }
     }
 
-    // Fast O(1) per-file chunk tracking map (prevents O(n) list scans during re-indexing)
     private final Map<String, List<FileChunkIndex>> fileChunksMap = new ConcurrentHashMap<>();
     private final Map<String, FileMetaData> fileMetaMap = new ConcurrentHashMap<>();
 
@@ -98,62 +100,71 @@ public class FastFileContentIndex {
             } catch (Throwable ignored) {}
         }
 
-        // Streaming FileChannel Reading: Process strictly in 64 KiB stream blocks without loading whole file to RAM
-        try (FileInputStream fis = new FileInputStream(file);
-             FileChannel channel = fis.getChannel()) {
-
-            long fileSize = channel.size();
-            if (fileSize == 0) return;
-
-            ByteBuffer buffer = ByteBuffer.allocate(CHUNK_SIZE_BYTES + OVERLAP_BYTES);
-            int chunkIdx = 0;
-            int currentLineNumber = 1;
-
-            byte[] carryOver = new byte[0];
-
-            while (channel.position() < fileSize || carryOver.length > 0) {
-                buffer.clear();
-
-                // Append leftover bytes from previous chunk overlap
-                if (carryOver.length > 0) {
-                    buffer.put(carryOver);
-                    carryOver = new byte[0];
-                }
-
-                int read = channel.read(buffer);
-                if (read <= 0 && buffer.position() == 0) break;
-
-                buffer.flip();
-                byte[] chunkRawBytes = new byte[buffer.remaining()];
-                buffer.get(chunkRawBytes);
-
-                // Ensure chunk boundary does NOT cut in the middle of a multi-byte UTF-8 character
-                int validLen = chunkRawBytes.length;
-                if (channel.position() < fileSize) {
-                    while (validLen > 0 && (chunkRawBytes[validLen - 1] & 0xC0) == 0x80) {
-                        validLen--;
+        // FastIO Native JNI Acceleration with Java FileChannel Fallback
+        boolean readSuccess = false;
+        try {
+            if (FastIO.isNativeAvailable()) {
+                try (FastFile fastFile = FastIO.openRead(path)) {
+                    long size = fastFile.size();
+                    if (size > 0) {
+                        byte[] bytes = new byte[(int) size];
+                        ByteBuffer buf = ByteBuffer.wrap(bytes);
+                        fastFile.read(buf);
+                        processBytesToChunks(path, bytes, fileChunks);
+                        readSuccess = true;
                     }
                 }
-
-                byte[] alignedBytes = new byte[validLen];
-                System.arraycopy(chunkRawBytes, 0, alignedBytes, 0, validLen);
-
-                String chunkRawText = new String(alignedBytes, StandardCharsets.UTF_8);
-                String chunkLowerText = chunkRawText.toLowerCase();
-                byte[] chunkLowerBytes = chunkLowerText.getBytes(StandardCharsets.UTF_8);
-                int[] newlineByteOffsets = computeNewlineByteOffsets(alignedBytes);
-                int[] newlineCharOffsets = computeNewlineCharOffsets(chunkRawText);
-                TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(chunkLowerText);
-
-                fileChunks.add(new FileChunkIndex(path, chunkIdx++, currentLineNumber, chunkRawText, alignedBytes, chunkLowerBytes, newlineByteOffsets, newlineCharOffsets, filter));
-
-                currentLineNumber += newlineByteOffsets.length;
             }
+        } catch (Throwable ignored) {}
 
-            fileChunksMap.put(path, fileChunks);
-        } catch (Throwable fallback) {
-            // Ignore unreadable binary files
+        if (!readSuccess) {
+            // Streaming Java FileChannel Fallback Reading in 64 KiB Blocks
+            try (FileInputStream fis = new FileInputStream(file);
+                 FileChannel channel = fis.getChannel()) {
+
+                long fileSize = channel.size();
+                if (fileSize == 0) return;
+
+                ByteBuffer buffer = ByteBuffer.allocate(CHUNK_SIZE_BYTES + OVERLAP_BYTES);
+                int chunkIdx = 0;
+                int currentLineNumber = 1;
+
+                while (channel.position() < fileSize) {
+                    buffer.clear();
+                    int read = channel.read(buffer);
+                    if (read <= 0 && buffer.position() == 0) break;
+
+                    buffer.flip();
+                    byte[] chunkRawBytes = new byte[buffer.remaining()];
+                    buffer.get(chunkRawBytes);
+
+                    int validLen = chunkRawBytes.length;
+                    if (channel.position() < fileSize) {
+                        while (validLen > 0 && (chunkRawBytes[validLen - 1] & 0xC0) == 0x80) {
+                            validLen--;
+                        }
+                    }
+
+                    byte[] alignedBytes = new byte[validLen];
+                    System.arraycopy(chunkRawBytes, 0, alignedBytes, 0, validLen);
+
+                    String chunkRawText = new String(alignedBytes, StandardCharsets.UTF_8);
+                    String chunkLowerText = chunkRawText.toLowerCase();
+                    byte[] chunkLowerBytes = chunkLowerText.getBytes(StandardCharsets.UTF_8);
+                    int[] newlineByteOffsets = computeNewlineByteOffsets(alignedBytes);
+                    int[] newlineCharOffsets = computeNewlineCharOffsets(chunkRawText);
+                    TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(chunkLowerText);
+
+                    fileChunks.add(new FileChunkIndex(path, chunkIdx++, currentLineNumber, chunkRawText, alignedBytes, chunkLowerBytes, newlineByteOffsets, newlineCharOffsets, filter));
+
+                    currentLineNumber += newlineByteOffsets.length;
+                }
+            } catch (Throwable fallback) {
+                // Ignore unreadable binary files
+            }
         }
+
+        fileChunksMap.put(path, fileChunks);
     }
 
     private void processBytesToChunks(String path, byte[] rawBytes, List<FileChunkIndex> fileChunks) {
