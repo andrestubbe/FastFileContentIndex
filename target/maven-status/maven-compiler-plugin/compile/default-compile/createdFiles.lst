@@ -1,4 +1,5 @@
 fastfilecontentindex\FastFileContentIndex$FileChunkIndex.class
 fastfilecontentindex\ContentMatchResult.class
+fastfilecontentindex\FastContentScanner.class
 fastfilecontentindex\FastFileContentIndex.class
 fastfilecontentindex\TrigramBloomFilter.class

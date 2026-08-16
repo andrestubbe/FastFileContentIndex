@@ -2,6 +2,7 @@ package fastfilecontentindex;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,7 +11,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Ultra-fast 3-Gram Bloom Filter indexer & SIMD candidate scanner.
- * Supports 64KB block chunking for massive multi-gigabyte log & document files.
+ * Supports 64KB block chunking for massive multi-gigabyte log & document files,
+ * multi-format parsing, and AVX2 FastBytes acceleration.
  */
 public class FastFileContentIndex {
 
@@ -86,13 +88,21 @@ public class FastFileContentIndex {
                 continue; // Rejected instantly!
             }
 
-            // 2. Candidate verification
+            // 2. Candidate verification via SIMD / FastBytes
             String content = contentCache.get(chunk.filePath);
             if (content != null) {
                 String[] lines = content.split("\n", -1);
                 for (int i = 0; i < lines.length; i++) {
                     String line = lines[i];
-                    int idx = line.toLowerCase().indexOf(queryLower);
+
+                    // Use SIMD AVX2 acceleration if FastBytes JNI is loaded
+                    int idx;
+                    try {
+                        idx = FastContentScanner.findSubstringSIMD(line, query);
+                    } catch (Throwable fallback) {
+                        idx = line.toLowerCase().indexOf(queryLower);
+                    }
+
                     if (idx != -1) {
                         long elapsedNs = System.nanoTime() - startTime;
                         results.add(new ContentMatchResult(chunk.filePath, i + 1, idx, line, elapsedNs));
@@ -123,6 +133,7 @@ public class FastFileContentIndex {
                lower.endsWith(".ts") || lower.endsWith(".html") || lower.endsWith(".css") ||
                lower.endsWith(".json") || lower.endsWith(".xml") || lower.endsWith(".md") ||
                lower.endsWith(".txt") || lower.endsWith(".bat") || lower.endsWith(".sh") ||
-               lower.endsWith(".pdf") || lower.endsWith(".log");
+               lower.endsWith(".pdf") || lower.endsWith(".log") || lower.endsWith(".png") ||
+               lower.endsWith(".jpg") || lower.endsWith(".jpeg");
     }
 }
