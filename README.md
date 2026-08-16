@@ -16,7 +16,7 @@ Unlike heavy solutions (Elasticsearch, Lucene) that heavily tokenize and parse t
 
 ---
 
-## Quick Start — Example
+## ⚡ Quick Start — Example
 
 ```java
 import fastfilecontentindex.FastFileContentIndex;
@@ -45,14 +45,22 @@ public class FastContentIndexDemo {
 
 ---
 
-## Installation (JitPack)
+## 📦 Installation (JitPack)
+
+Add the JitPack repository to your `pom.xml`:
 
 ```xml
-<repository>
-    <id>jitpack.io</id>
-    <url>https://jitpack.io</url>
-</repository>
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
+```
 
+Add the FastFileContentIndex dependency:
+
+```xml
 <dependency>
     <groupId>com.github.andrestubbe</groupId>
     <artifactId>FastFileContentIndex</artifactId>
@@ -62,15 +70,32 @@ public class FastContentIndexDemo {
 
 ---
 
-## Key Features
+## 🚀 Key Architectural Features
 
-- 🚀 **3-Gram Bloom Filter Rejection**: Rejects 99.9% of files in $< 1 \text{ \mu s}$ per query without touching disk contents.
-- ⚡ **Sub-Millisecond Search**: Blazing fast full-text substring queries across thousands of source code files.
+- ⚡ **3-Gram Bloom Filter Rejection**: Rejects 99.9% of files in $< 1 \text{ \mu s}$ per query without touching disk contents.
+- 🔍 **Sub-Millisecond Search**: Blazing fast full-text substring queries across thousands of source code files.
 - 🎨 **FastANSI Integration**: Native support for 24-bit TrueColor terminal output formatting and match highlighting.
 - 🧱 **FastJava Stack Compatibility**: Integrates seamlessly with `FastFileIndex`, `FastFileSearch`, `FastBytes`, and `FastSIMD`.
 
 ---
 
-## License
+## 🏗️ Technical Architecture
+
+```
+[ Codebase Directory ]
+          │
+          ▼
+ [ 3-Gram Bloom Filter ]  ────── Reject 99.9% Irrelevant Files (< 1 µs)
+          │
+          ▼
+ [ Candidate Verification ]
+          │
+          ▼
+ [ FastANSI Highlighted Results ]
+```
+
+---
+
+## 📄 License
 
 [MIT License](LICENSE) © 2026 Andre Stubbe
