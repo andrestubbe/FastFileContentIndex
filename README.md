@@ -105,19 +105,21 @@ IndexerBenchmark.benchmarkFastFileContentIndexQuery  thrpt    3  139860.251 ± 6
 
 ---
 
-## Technical Architecture
+## Technical Architecture — The FastJava Pipeline Chain
+
+`FastFileContentIndex` operates as the second high-speed filtering layer in the unified FastJava Search & AI Infrastructure:
 
 ```
-[ Codebase Directory ]
-          │
-          ▼
- [ 3-Gram Bloom Filter ]  ────── Reject 99.9% Irrelevant Files (< 1 µs)
-          │
-          ▼
- [ Candidate Verification ]
-          │
-          ▼
- [ FastANSI Highlighted Results ]
+┌─────────────────┐       ┌──────────────────────┐       ┌──────────────────┐
+│  FastFileIndex  │ ────► │ FastFileContentIndex │ ────► │   FastTokenize   │
+│ (Tree / mmap)   │       │ (3-Gram Bloom <1µs)  │       │ (Single-Pass O(n))│
+└─────────────────┘       └──────────────────────┘       └──────────────────┘
+                                                                   │
+                                                                   ▼
+┌─────────────────┐       ┌──────────────────────┐       ┌──────────────────┐
+│   FastAIRag     │ ◄──── │    FastAIVectorDB    │ ◄──── │ FastContentChunk │
+│ (LLM Context)   │       │  (SIMD Vector Match) │       │ (Syntax Chunking)│
+└─────────────────┘       └──────────────────────┘       └──────────────────┘
 ```
 
 ---
