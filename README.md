@@ -155,7 +155,22 @@ Add the JitPack repository and dependency to your `pom.xml`:
         <artifactId>FastFileContentIndex</artifactId>
         <version>0.1.0</version>
     </dependency>
-    <!-- Hardware acceleration & native JNI dependencies -->
+    <!-- Hardware acceleration & ecosystem dependencies -->
+    <dependency>
+        <groupId>com.github.andrestubbe</groupId>
+        <artifactId>FastFileIndex</artifactId>
+        <version>0.1.1</version>
+    </dependency>
+    <dependency>
+        <groupId>com.github.andrestubbe</groupId>
+        <artifactId>FastFileSearch</artifactId>
+        <version>0.1.0</version>
+    </dependency>
+    <dependency>
+        <groupId>com.github.andrestubbe</groupId>
+        <artifactId>FastContentParse</artifactId>
+        <version>0.1.0</version>
+    </dependency>
     <dependency>
         <groupId>com.github.andrestubbe</groupId>
         <artifactId>FastCore</artifactId>
@@ -168,7 +183,22 @@ Add the JitPack repository and dependency to your `pom.xml`:
     </dependency>
     <dependency>
         <groupId>com.github.andrestubbe</groupId>
+        <artifactId>FastPointer</artifactId>
+        <version>0.1.1</version>
+    </dependency>
+    <dependency>
+        <groupId>com.github.andrestubbe</groupId>
+        <artifactId>FastMemory</artifactId>
+        <version>0.1.1</version>
+    </dependency>
+    <dependency>
+        <groupId>com.github.andrestubbe</groupId>
         <artifactId>FastBytes</artifactId>
+        <version>0.1.1</version>
+    </dependency>
+    <dependency>
+        <groupId>com.github.andrestubbe</groupId>
+        <artifactId>FastIO</artifactId>
         <version>0.1.1</version>
     </dependency>
     <dependency>
@@ -188,9 +218,15 @@ repositories {
 
 dependencies {
     implementation 'com.github.andrestubbe:FastFileContentIndex:0.1.0'
+    implementation 'com.github.andrestubbe:FastFileIndex:0.1.1'
+    implementation 'com.github.andrestubbe:FastFileSearch:0.1.0'
+    implementation 'com.github.andrestubbe:FastContentParse:0.1.0'
     implementation 'com.github.andrestubbe:FastCore:0.1.0'
     implementation 'com.github.andrestubbe:FastSIMD:0.1.3'
+    implementation 'com.github.andrestubbe:FastPointer:0.1.1'
+    implementation 'com.github.andrestubbe:FastMemory:0.1.1'
     implementation 'com.github.andrestubbe:FastBytes:0.1.1'
+    implementation 'com.github.andrestubbe:FastIO:0.1.1'
     implementation 'com.github.andrestubbe:FastANSI:0.1.2'
 }
 ```
