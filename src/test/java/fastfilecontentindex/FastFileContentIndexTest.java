@@ -67,4 +67,24 @@ class FastFileContentIndexTest {
         assertFalse(errorResults.isEmpty());
         assertTrue(errorResults.get(0).lineSnippet().contains("CRITICAL_ERROR_CODE_99"));
     }
+
+    @Test
+    void testIncrementalIndexing(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("Dynamic.java");
+        Files.writeString(file, "class Dynamic { void first() {} }");
+
+        index.indexFile(file.toFile());
+        assertEquals(1, index.getIndexedFileCount());
+        assertFalse(index.search("first").isEmpty());
+        assertTrue(index.search("second").isEmpty());
+
+        // Modify file content and ensure re-indexing updates chunks
+        file.toFile().setLastModified(System.currentTimeMillis() + 2000);
+        Files.writeString(file, "class Dynamic { void second() {} }");
+
+        index.indexFile(file.toFile());
+        assertEquals(1, index.getIndexedFileCount());
+        assertTrue(index.search("first").isEmpty());
+        assertFalse(index.search("second").isEmpty());
+    }
 }
