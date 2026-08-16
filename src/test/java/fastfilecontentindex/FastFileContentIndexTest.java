@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -86,5 +87,19 @@ class FastFileContentIndexTest {
         assertEquals(1, index.getIndexedFileCount());
         assertTrue(index.search("first").isEmpty());
         assertFalse(index.search("second").isEmpty());
+    }
+
+    @Test
+    void testUtf8MultiByteOffsets(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("Utf8Test.txt");
+        String content = "Zeile 1: Überraschung und Äpfel\nZeile 2: ⚡ High-performance FastJava\n";
+        Files.writeString(file, content, StandardCharsets.UTF_8);
+
+        index.indexFile(file.toFile());
+
+        List<ContentMatchResult> results = index.search("High-performance");
+        assertFalse(results.isEmpty());
+        assertEquals(2, results.get(0).lineNumber());
+        assertEquals("Zeile 2: ⚡ High-performance FastJava", results.get(0).lineSnippet().trim());
     }
 }

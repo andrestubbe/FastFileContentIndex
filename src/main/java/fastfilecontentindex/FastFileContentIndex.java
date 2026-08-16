@@ -11,30 +11,30 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Ultra-fast 3-Gram Bloom Filter indexer & SIMD candidate scanner.
- * High-performance Zero-Allocation Architecture:
- *   1. FileChannel Stream Chunking & FastContentParse PDF Integration
- *   2. Pre-computed Lowercase UTF-8 Byte Arrays per Chunk
- *   3. Direct Byte-Offset -> Line/Column Mapping (Zero String.split() overhead during search)
+ * High-performance Byte-Level Architecture:
+ *   1. True 64 KiB Byte Chunking (Raw UTF-8 byte boundary alignment)
+ *   2. Pre-computed Raw UTF-8 & Lowercase Byte Arrays per Chunk
+ *   3. UTF-8 Byte-Offset to Line/Column & Snippet Mapping (Handles Multi-byte UTF-8, Umlauts, Emojis)
  *   4. Strict Per-Chunk SIMD AVX2 Candidate Scanning
  *   5. Incremental Indexing via lastModified tracking
  */
 public class FastFileContentIndex {
 
-    public static final int CHUNK_SIZE = 65536; // 64 KB Chunks
+    public static final int CHUNK_SIZE_BYTES = 65536; // 64 KiB Bytes
 
     public static class FileChunkIndex {
         public final String filePath;
         public final int chunkIndex;
         public final int startLineNumber;
-        public final String rawChunkContent;
-        public final byte[] lowerChunkBytes; // Pre-allocated UTF-8 byte array for SIMD scans
+        public final byte[] rawChunkBytes;   // Original raw UTF-8 bytes
+        public final byte[] lowerChunkBytes; // Pre-allocated lowercase UTF-8 bytes for SIMD scans
         public final TrigramBloomFilter bloomFilter;
 
-        public FileChunkIndex(String filePath, int chunkIndex, int startLineNumber, String rawChunkContent, byte[] lowerChunkBytes, TrigramBloomFilter bloomFilter) {
+        public FileChunkIndex(String filePath, int chunkIndex, int startLineNumber, byte[] rawChunkBytes, byte[] lowerChunkBytes, TrigramBloomFilter bloomFilter) {
             this.filePath = filePath;
             this.chunkIndex = chunkIndex;
             this.startLineNumber = startLineNumber;
-            this.rawChunkContent = rawChunkContent;
+            this.rawChunkBytes = rawChunkBytes;
             this.lowerChunkBytes = lowerChunkBytes;
             this.bloomFilter = bloomFilter;
         }
@@ -59,27 +59,28 @@ public class FastFileContentIndex {
 
         chunkList.removeIf(c -> c.filePath.equals(path));
 
-        String content = null;
+        byte[] rawBytes = null;
         if (path.toLowerCase().endsWith(".pdf")) {
             try {
                 fastcontentparse.FastContentParse parser = new fastcontentparse.FastContentParse();
                 fastcontentparse.ParsedDocument doc = parser.parseFile(file.toPath());
-                content = doc.getText();
+                String parsedText = doc.getText();
+                if (parsedText != null) {
+                    rawBytes = parsedText.getBytes(StandardCharsets.UTF_8);
+                }
             } catch (Throwable ignored) {}
         }
 
-        if (content == null) {
+        if (rawBytes == null) {
             try (FileInputStream fis = new FileInputStream(file);
                  FileChannel channel = fis.getChannel()) {
 
                 long fileSize = channel.size();
                 if (fileSize == 0) return;
 
-                byte[] bytes = new byte[(int) fileSize];
-                java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(bytes);
+                rawBytes = new byte[(int) fileSize];
+                java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(rawBytes);
                 channel.read(buffer);
-
-                content = new String(bytes, StandardCharsets.UTF_8);
             } catch (Throwable fallback) {
                 // Ignore unreadable binary files
                 return;
@@ -88,29 +89,34 @@ public class FastFileContentIndex {
 
         lastModifiedMap.put(path, lastMod);
 
-        if (content.length() <= CHUNK_SIZE) {
-            String lower = content.toLowerCase();
-            byte[] lowerBytes = lower.getBytes(StandardCharsets.UTF_8);
-            TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(lower);
-            chunkList.add(new FileChunkIndex(path, 0, 1, content, lowerBytes, filter));
+        if (rawBytes.length <= CHUNK_SIZE_BYTES) {
+            String contentStr = new String(rawBytes, StandardCharsets.UTF_8);
+            String lowerStr = contentStr.toLowerCase();
+            byte[] lowerBytes = lowerStr.getBytes(StandardCharsets.UTF_8);
+            TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(lowerStr);
+            chunkList.add(new FileChunkIndex(path, 0, 1, rawBytes, lowerBytes, filter));
         } else {
-            // 64 KB Block Chunking for massive files
-            int numChunks = (content.length() + CHUNK_SIZE - 1) / CHUNK_SIZE;
+            // True 64 KiB Byte Chunking for massive files
+            int numChunks = (rawBytes.length + CHUNK_SIZE_BYTES - 1) / CHUNK_SIZE_BYTES;
             int currentLineNumber = 1;
 
             for (int i = 0; i < numChunks; i++) {
-                int start = i * CHUNK_SIZE;
-                int end = Math.min(start + CHUNK_SIZE, content.length());
-                String chunkText = content.substring(start, end);
+                int start = i * CHUNK_SIZE_BYTES;
+                int end = Math.min(start + CHUNK_SIZE_BYTES, rawBytes.length);
 
-                String lowerChunk = chunkText.toLowerCase();
-                byte[] lowerBytes = lowerChunk.getBytes(StandardCharsets.UTF_8);
-                TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(lowerChunk);
+                byte[] chunkRawBytes = new byte[end - start];
+                System.arraycopy(rawBytes, start, chunkRawBytes, 0, end - start);
 
-                chunkList.add(new FileChunkIndex(path, i, currentLineNumber, chunkText, lowerBytes, filter));
+                String chunkRawText = new String(chunkRawBytes, StandardCharsets.UTF_8);
+                String chunkLowerText = chunkRawText.toLowerCase();
+                byte[] chunkLowerBytes = chunkLowerText.getBytes(StandardCharsets.UTF_8);
+                TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(chunkLowerText);
 
-                for (int c = 0; c < chunkText.length(); c++) {
-                    if (chunkText.charAt(c) == '\n') {
+                chunkList.add(new FileChunkIndex(path, i, currentLineNumber, chunkRawBytes, chunkLowerBytes, filter));
+
+                // Accurately track start line numbers across byte chunks
+                for (byte b : chunkRawBytes) {
+                    if (b == '\n') {
                         currentLineNumber++;
                     }
                 }
@@ -156,7 +162,7 @@ public class FastFileContentIndex {
                     break;
                 }
 
-                // 3. Direct Byte-Offset -> Line/Column Mapping
+                // 3. UTF-8 Byte-Offset to Line/Column & Snippet Mapping (Handles Umlauts, Multi-byte UTF-8)
                 long elapsedNs = System.nanoTime() - startTime;
                 ContentMatchResult result = mapByteOffsetToResult(chunk, matchPos, queryBytes.length, elapsedNs);
                 if (result != null) {
@@ -169,28 +175,44 @@ public class FastFileContentIndex {
         return results;
     }
 
-    private ContentMatchResult mapByteOffsetToResult(FileChunkIndex chunk, int matchBytePos, int queryLen, long elapsedNs) {
-        String raw = chunk.rawChunkContent;
-        if (matchBytePos >= raw.length()) return null;
+    private ContentMatchResult mapByteOffsetToResult(FileChunkIndex chunk, int matchBytePos, int queryByteLen, long elapsedNs) {
+        byte[] rawBytes = chunk.rawChunkBytes;
+        if (matchBytePos >= rawBytes.length) return null;
 
         int lineNumber = chunk.startLineNumber;
-        int lastNewline = -1;
+        int lastNewlineBytePos = -1;
 
-        for (int i = 0; i < matchBytePos && i < raw.length(); i++) {
-            if (raw.charAt(i) == '\n') {
+        // Calculate line number & column offset strictly from raw UTF-8 bytes
+        for (int i = 0; i < matchBytePos && i < rawBytes.length; i++) {
+            if (rawBytes[i] == '\n') {
                 lineNumber++;
-                lastNewline = i;
+                lastNewlineBytePos = i;
             }
         }
 
-        int colOffset = matchBytePos - (lastNewline + 1);
+        int lineStartBytePos = lastNewlineBytePos + 1;
 
-        int lineStart = lastNewline + 1;
-        int lineEnd = raw.indexOf('\n', matchBytePos);
-        if (lineEnd == -1) {
-            lineEnd = raw.length();
+        // Find end of line in byte array
+        int lineEndBytePos = rawBytes.length;
+        for (int i = matchBytePos; i < rawBytes.length; i++) {
+            if (rawBytes[i] == '\n' || rawBytes[i] == '\r') {
+                lineEndBytePos = i;
+                break;
+            }
         }
-        String snippet = raw.substring(lineStart, lineEnd);
+
+        // Extract raw line snippet from bytes safely using UTF-8
+        byte[] lineBytes = new byte[lineEndBytePos - lineStartBytePos];
+        System.arraycopy(rawBytes, lineStartBytePos, lineBytes, 0, lineBytes.length);
+        String snippet = new String(lineBytes, StandardCharsets.UTF_8);
+
+        // Column offset in UTF-16 characters up to match byte position
+        int colOffset = 0;
+        try {
+            byte[] prefixBytes = new byte[matchBytePos - lineStartBytePos];
+            System.arraycopy(rawBytes, lineStartBytePos, prefixBytes, 0, prefixBytes.length);
+            colOffset = new String(prefixBytes, StandardCharsets.UTF_8).length();
+        } catch (Throwable ignored) {}
 
         return new ContentMatchResult(chunk.filePath, lineNumber, colOffset, snippet, elapsedNs);
     }
