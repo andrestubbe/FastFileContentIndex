@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Ultra-fast 3-Gram Bloom Filter indexer & SIMD candidate scanner.
  * High-performance Zero-Allocation Architecture:
- *   1. FileChannel Stream Chunking
+ *   1. FileChannel Stream Chunking & FastContentParse PDF Integration
  *   2. Pre-computed Lowercase UTF-8 Byte Arrays per Chunk
  *   3. Direct Byte-Offset -> Line/Column Mapping (Zero String.split() overhead during search)
  *   4. Strict Per-Chunk SIMD AVX2 Candidate Scanning
@@ -59,49 +59,62 @@ public class FastFileContentIndex {
 
         chunkList.removeIf(c -> c.filePath.equals(path));
 
-        try (FileInputStream fis = new FileInputStream(file);
-             FileChannel channel = fis.getChannel()) {
+        String content = null;
+        if (path.toLowerCase().endsWith(".pdf")) {
+            try {
+                fastcontentparse.FastContentParse parser = new fastcontentparse.FastContentParse();
+                fastcontentparse.ParsedDocument doc = parser.parseFile(file.toPath());
+                content = doc.getText();
+            } catch (Throwable ignored) {}
+        }
 
-            long fileSize = channel.size();
-            if (fileSize == 0) return;
+        if (content == null) {
+            try (FileInputStream fis = new FileInputStream(file);
+                 FileChannel channel = fis.getChannel()) {
 
-            byte[] bytes = new byte[(int) fileSize];
-            java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(bytes);
-            channel.read(buffer);
+                long fileSize = channel.size();
+                if (fileSize == 0) return;
 
-            String content = new String(bytes, StandardCharsets.UTF_8);
-            lastModifiedMap.put(path, lastMod);
+                byte[] bytes = new byte[(int) fileSize];
+                java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(bytes);
+                channel.read(buffer);
 
-            if (content.length() <= CHUNK_SIZE) {
-                String lower = content.toLowerCase();
-                byte[] lowerBytes = lower.getBytes(StandardCharsets.UTF_8);
-                TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(lower);
-                chunkList.add(new FileChunkIndex(path, 0, 1, content, lowerBytes, filter));
-            } else {
-                // 64 KB Block Chunking for massive files
-                int numChunks = (content.length() + CHUNK_SIZE - 1) / CHUNK_SIZE;
-                int currentLineNumber = 1;
+                content = new String(bytes, StandardCharsets.UTF_8);
+            } catch (Throwable fallback) {
+                // Ignore unreadable binary files
+                return;
+            }
+        }
 
-                for (int i = 0; i < numChunks; i++) {
-                    int start = i * CHUNK_SIZE;
-                    int end = Math.min(start + CHUNK_SIZE, content.length());
-                    String chunkText = content.substring(start, end);
+        lastModifiedMap.put(path, lastMod);
 
-                    String lowerChunk = chunkText.toLowerCase();
-                    byte[] lowerBytes = lowerChunk.getBytes(StandardCharsets.UTF_8);
-                    TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(lowerChunk);
+        if (content.length() <= CHUNK_SIZE) {
+            String lower = content.toLowerCase();
+            byte[] lowerBytes = lower.getBytes(StandardCharsets.UTF_8);
+            TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(lower);
+            chunkList.add(new FileChunkIndex(path, 0, 1, content, lowerBytes, filter));
+        } else {
+            // 64 KB Block Chunking for massive files
+            int numChunks = (content.length() + CHUNK_SIZE - 1) / CHUNK_SIZE;
+            int currentLineNumber = 1;
 
-                    chunkList.add(new FileChunkIndex(path, i, currentLineNumber, chunkText, lowerBytes, filter));
+            for (int i = 0; i < numChunks; i++) {
+                int start = i * CHUNK_SIZE;
+                int end = Math.min(start + CHUNK_SIZE, content.length());
+                String chunkText = content.substring(start, end);
 
-                    for (int c = 0; c < chunkText.length(); c++) {
-                        if (chunkText.charAt(c) == '\n') {
-                            currentLineNumber++;
-                        }
+                String lowerChunk = chunkText.toLowerCase();
+                byte[] lowerBytes = lowerChunk.getBytes(StandardCharsets.UTF_8);
+                TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(lowerChunk);
+
+                chunkList.add(new FileChunkIndex(path, i, currentLineNumber, chunkText, lowerBytes, filter));
+
+                for (int c = 0; c < chunkText.length(); c++) {
+                    if (chunkText.charAt(c) == '\n') {
+                        currentLineNumber++;
                     }
                 }
             }
-        } catch (Throwable fallback) {
-            // Ignore unreadable binary files
         }
     }
 
@@ -143,7 +156,7 @@ public class FastFileContentIndex {
                     break;
                 }
 
-                // 3. Direct Byte-Offset -> Line/Column Mapping (Zero String.split overhead!)
+                // 3. Direct Byte-Offset -> Line/Column Mapping
                 long elapsedNs = System.nanoTime() - startTime;
                 ContentMatchResult result = mapByteOffsetToResult(chunk, matchPos, queryBytes.length, elapsedNs);
                 if (result != null) {
@@ -160,7 +173,6 @@ public class FastFileContentIndex {
         String raw = chunk.rawChunkContent;
         if (matchBytePos >= raw.length()) return null;
 
-        // Calculate line number & column offset directly from string position
         int lineNumber = chunk.startLineNumber;
         int lastNewline = -1;
 
@@ -173,7 +185,6 @@ public class FastFileContentIndex {
 
         int colOffset = matchBytePos - (lastNewline + 1);
 
-        // Extract line snippet cleanly
         int lineStart = lastNewline + 1;
         int lineEnd = raw.indexOf('\n', matchBytePos);
         if (lineEnd == -1) {
