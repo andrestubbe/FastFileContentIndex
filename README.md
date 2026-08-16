@@ -12,7 +12,7 @@
 
 FastFileContentIndex is the third pillar of the **FastJava search ecosystem** (alongside `FastFileIndex` and `FastFileSearch`). It provides a highly optimized, 3-gram bitmask index designed specifically for real-time universal search ("Raycast / Spotlight for Documents, Code, PDFs, and OCR Screenshots").
 
-Unlike heavy solutions (Elasticsearch, Lucene) that heavily tokenize and parse text, FastFileContentIndex uses a lightweight bitmask of 3-grams to instantly filter out 99.9% of files, completing substring searches in sub-millisecond speeds.
+Unlike heavy solutions (Elasticsearch, Lucene) that heavily tokenize and parse text, FastFileContentIndex uses a lightweight bitmask of 3-grams to quickly filter out non-matching files, completing substring searches in sub-millisecond speeds.
 
 [![FastFileContentIndex Showcase](docs/screenshot.png)](https://github.com/andrestubbe/FastFileContentIndex)
 
@@ -65,7 +65,7 @@ public class FastContentIndexDemo {
 
 Traditional full-text search engines (Lucene, Elasticsearch) rely on heavy inverted indexes and lexical tokenization pipelines that consume huge amounts of memory and CPU during indexing. `FastFileContentIndex` provides:
 
-- **Sub-Microsecond Query Rejection** — Evaluates 24-bit 3-gram bitmasks to reject 99.9% of non-matching files in `< 1 µs` per file without reading disk contents.
+- **Fast Bitmask Rejection** — Evaluates 24-bit 3-gram bitmasks to reject non-matching files without reading disk contents.
 - **Zero-Allocation Result Streaming** — Low-overhead result models returning exact line numbers, char offsets, and line snippets.
 - **Lightweight Memory Footprint** — Requires only a fraction of the RAM used by traditional text search engines.
 - **Zero Dependencies** — Standalone, lightweight JAR (< 50 KB).
@@ -74,7 +74,7 @@ Traditional full-text search engines (Lucene, Elasticsearch) rely on heavy inver
 
 ## Key Features
 
-- ⚡ **3-Gram Bloom Filter Rejection** — Rejects 99.9% of files in sub-microsecond time (`< 1 µs`) per query without touching disk contents.
+- ⚡ **3-Gram Bloom Filter Rejection** — Fast bitmask rejection per query without touching disk contents.
 - 🔍 **Sub-Millisecond Search** — Blazing fast full-text substring queries across thousands of source code files.
 - 🎨 **FastANSI Integration** — Native support for 24-bit TrueColor terminal output formatting and match highlighting.
 - 🧱 **FastJava Stack Compatibility** — Integrates seamlessly with `FastFileIndex`, `FastFileSearch`, `FastBytes`, and `FastSIMD`.
@@ -85,8 +85,8 @@ Traditional full-text search engines (Lucene, Elasticsearch) rely on heavy inver
 
 `FastFileContentIndex` achieves its extreme performance by combining 4 complementary low-level technologies:
 
-1. 🛡️ **3-Gram Bloom Filter Rejection (`TrigramBloomFilter`)**: Generates compact 24-bit 3-gram bitmask signatures that reject 99.9% of non-matching files in `< 1 µs` without touching disk contents.
-2. ⚡ **SIMD AVX2 Substring Search (`FastBytes` & `FastContentScanner`)**: Executes 256-bit SIMD vector sweeps (32 bytes per cycle) on candidate file buffers.
+1. 🛡️ **3-Gram Bloom Filter Rejection (`TrigramBloomFilter`)**: Generates compact 24-bit 3-gram bitmask signatures that reject non-matching files without touching disk contents.
+2. ⚡ **SIMD AVX2 Substring Search (`FastBytes` & `FastContentScanner`)**: Executes 256-bit / 32-byte AVX2 vector loads on candidate file buffers.
 3. 🧩 **64 KB Block Chunking & Incremental Indexing**: Splits large documents, PDFs, and log files into 64KB chunks so edits only require re-indexing affected blocks.
 4. 🔍 **Search-as-You-Type Engine**: Delivers zero-latency, sub-millisecond query results optimized for local CLI tools, IDEs, and desktop search apps.
 
