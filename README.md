@@ -72,7 +72,7 @@ Add the FastFileContentIndex dependency:
 
 ## 🚀 Key Architectural Features
 
-- ⚡ **3-Gram Bloom Filter Rejection**: Rejects 99.9% of files in $< 1 \text{ \mu s}$ per query without touching disk contents.
+- ⚡ **3-Gram Bloom Filter Rejection**: Rejects 99.9% of files in sub-microsecond time (`< 1 µs`) per query without touching disk contents.
 - 🔍 **Sub-Millisecond Search**: Blazing fast full-text substring queries across thousands of source code files.
 - 🎨 **FastANSI Integration**: Native support for 24-bit TrueColor terminal output formatting and match highlighting.
 - 🧱 **FastJava Stack Compatibility**: Integrates seamlessly with `FastFileIndex`, `FastFileSearch`, `FastBytes`, and `FastSIMD`.
