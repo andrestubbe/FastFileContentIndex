@@ -1,9 +1,7 @@
 package fastfilecontentindex;
 
-import fastbytes.FastBytes;
 import java.io.File;
-import java.io.RandomAccessFile;
-import java.nio.MappedByteBuffer;
+import java.io.FileInputStream;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -14,10 +12,11 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Ultra-fast 3-Gram Bloom Filter indexer & SIMD candidate scanner.
  * High-performance Zero-Allocation Architecture:
- *   1. Memory-Mapped Chunks (mmap FileChannel)
- *   2. Pre-computed Lowercase UTF-8 Byte Arrays per Chunk (Zero GC during queries)
- *   3. Strict Per-Chunk SIMD AVX2 Candidate Scanning
- *   4. Incremental Indexing via lastModified tracking
+ *   1. FileChannel Stream Chunking
+ *   2. Pre-computed Lowercase UTF-8 Byte Arrays per Chunk
+ *   3. Direct Byte-Offset -> Line/Column Mapping (Zero String.split() overhead during search)
+ *   4. Strict Per-Chunk SIMD AVX2 Candidate Scanning
+ *   5. Incremental Indexing via lastModified tracking
  */
 public class FastFileContentIndex {
 
@@ -60,8 +59,8 @@ public class FastFileContentIndex {
 
         chunkList.removeIf(c -> c.filePath.equals(path));
 
-        try (RandomAccessFile raf = new RandomAccessFile(file, "r");
-             FileChannel channel = raf.getChannel()) {
+        try (FileInputStream fis = new FileInputStream(file);
+             FileChannel channel = fis.getChannel()) {
 
             long fileSize = channel.size();
             if (fileSize == 0) return;
@@ -134,27 +133,55 @@ public class FastFileContentIndex {
                 continue; // Rejected instantly!
             }
 
-            // 2. Zero-Allocation SIMD AVX2 Candidate Scan ONLY on matching 64KB Chunk!
+            // 2. Direct SIMD AVX2 Candidate Byte-Offset Sweep
             byte[] chunkBytes = chunk.lowerChunkBytes;
-            int matchPos = FastContentScanner.findSubstringSIMD(chunkBytes, queryBytes, 0);
+            int offset = 0;
 
-            if (matchPos != -1) {
-                // Map byte offset back to line number and raw line snippet
-                String rawChunk = chunk.rawChunkContent;
-                String[] lines = rawChunk.split("\n", -1);
-                int currentLine = chunk.startLineNumber;
-
-                for (String line : lines) {
-                    if (line.toLowerCase().contains(queryLower)) {
-                        long elapsedNs = System.nanoTime() - startTime;
-                        int idx = line.toLowerCase().indexOf(queryLower);
-                        results.add(new ContentMatchResult(chunk.filePath, currentLine, idx, line, elapsedNs));
-                    }
-                    currentLine++;
+            while (offset < chunkBytes.length) {
+                int matchPos = FastContentScanner.findSubstringSIMD(chunkBytes, queryBytes, offset);
+                if (matchPos == -1) {
+                    break;
                 }
+
+                // 3. Direct Byte-Offset -> Line/Column Mapping (Zero String.split overhead!)
+                long elapsedNs = System.nanoTime() - startTime;
+                ContentMatchResult result = mapByteOffsetToResult(chunk, matchPos, queryBytes.length, elapsedNs);
+                if (result != null) {
+                    results.add(result);
+                }
+
+                offset = matchPos + queryBytes.length;
             }
         }
         return results;
+    }
+
+    private ContentMatchResult mapByteOffsetToResult(FileChunkIndex chunk, int matchBytePos, int queryLen, long elapsedNs) {
+        String raw = chunk.rawChunkContent;
+        if (matchBytePos >= raw.length()) return null;
+
+        // Calculate line number & column offset directly from string position
+        int lineNumber = chunk.startLineNumber;
+        int lastNewline = -1;
+
+        for (int i = 0; i < matchBytePos && i < raw.length(); i++) {
+            if (raw.charAt(i) == '\n') {
+                lineNumber++;
+                lastNewline = i;
+            }
+        }
+
+        int colOffset = matchBytePos - (lastNewline + 1);
+
+        // Extract line snippet cleanly
+        int lineStart = lastNewline + 1;
+        int lineEnd = raw.indexOf('\n', matchBytePos);
+        if (lineEnd == -1) {
+            lineEnd = raw.length();
+        }
+        String snippet = raw.substring(lineStart, lineEnd);
+
+        return new ContentMatchResult(chunk.filePath, lineNumber, colOffset, snippet, elapsedNs);
     }
 
     public int getIndexedFileCount() {
