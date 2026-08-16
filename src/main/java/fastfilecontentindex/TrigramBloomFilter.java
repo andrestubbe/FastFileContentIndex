@@ -47,6 +47,17 @@ public final class TrigramBloomFilter {
         return true;
     }
 
+    public static TrigramBloomFilter buildFromBytes(byte[] bytes) {
+        TrigramBloomFilter filter = new TrigramBloomFilter();
+        if (bytes == null || bytes.length < 3) {
+            return filter;
+        }
+        for (int i = 0; i <= bytes.length - 3; i++) {
+            filter.addTrigram(bytes[i] & 0xFF, bytes[i + 1] & 0xFF, bytes[i + 2] & 0xFF);
+        }
+        return filter;
+    }
+
     public static TrigramBloomFilter buildFromText(String text) {
         TrigramBloomFilter filter = new TrigramBloomFilter();
         if (text == null || text.length() < 3) {
