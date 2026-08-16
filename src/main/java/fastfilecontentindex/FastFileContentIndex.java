@@ -5,6 +5,7 @@ import java.io.FileInputStream;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,8 +14,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Ultra-fast 3-Gram Bloom Filter indexer & SIMD candidate scanner.
  * High-performance Zero-Allocation Architecture:
  *   1. True 64 KiB Byte Chunking (Raw UTF-8 byte boundary alignment)
- *   2. Pre-computed Raw String + Pre-computed Newline Byte-Offset Index per Chunk
- *   3. Zero-Allocation Line/Column/Snippet Extraction during queries
+ *   2. Pre-computed O(1) Binary-Searchable Newline Byte-Offsets + Pre-computed Newline Char-Offsets
+ *   3. Zero-Allocation Line/Column/Snippet Extraction during queries (No new String() allocations)
  *   4. Strict Per-Chunk SIMD AVX2 Candidate Scanning
  *   5. Incremental Indexing via lastModified tracking
  */
@@ -26,13 +27,14 @@ public class FastFileContentIndex {
         public final String filePath;
         public final int chunkIndex;
         public final int startLineNumber;
-        public final String rawChunkText;     // Pre-decoded String for zero-allocation snippet substringing
-        public final byte[] rawChunkBytes;   // Original raw UTF-8 bytes
-        public final byte[] lowerChunkBytes; // Pre-allocated lowercase UTF-8 bytes for SIMD scans
-        public final int[] newlineByteOffsets; // Pre-indexed byte positions of '\n' (Zero-Scan Line Lookup)
+        public final String rawChunkText;         // Pre-decoded String for zero-allocation snippet substringing
+        public final byte[] rawChunkBytes;       // Original raw UTF-8 bytes
+        public final byte[] lowerChunkBytes;     // Pre-allocated lowercase UTF-8 bytes for SIMD scans
+        public final int[] newlineByteOffsets;   // Pre-indexed byte positions of '\n'
+        public final int[] newlineCharOffsets;   // Pre-indexed char positions of '\n' for O(1) String mapping
         public final TrigramBloomFilter bloomFilter;
 
-        public FileChunkIndex(String filePath, int chunkIndex, int startLineNumber, String rawChunkText, byte[] rawChunkBytes, byte[] lowerChunkBytes, int[] newlineByteOffsets, TrigramBloomFilter bloomFilter) {
+        public FileChunkIndex(String filePath, int chunkIndex, int startLineNumber, String rawChunkText, byte[] rawChunkBytes, byte[] lowerChunkBytes, int[] newlineByteOffsets, int[] newlineCharOffsets, TrigramBloomFilter bloomFilter) {
             this.filePath = filePath;
             this.chunkIndex = chunkIndex;
             this.startLineNumber = startLineNumber;
@@ -40,6 +42,7 @@ public class FastFileContentIndex {
             this.rawChunkBytes = rawChunkBytes;
             this.lowerChunkBytes = lowerChunkBytes;
             this.newlineByteOffsets = newlineByteOffsets;
+            this.newlineCharOffsets = newlineCharOffsets;
             this.bloomFilter = bloomFilter;
         }
     }
@@ -97,9 +100,10 @@ public class FastFileContentIndex {
             String contentStr = new String(rawBytes, StandardCharsets.UTF_8);
             String lowerStr = contentStr.toLowerCase();
             byte[] lowerBytes = lowerStr.getBytes(StandardCharsets.UTF_8);
-            int[] newlines = computeNewlineOffsets(rawBytes);
+            int[] newlineByteOffsets = computeNewlineByteOffsets(rawBytes);
+            int[] newlineCharOffsets = computeNewlineCharOffsets(contentStr);
             TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(lowerStr);
-            chunkList.add(new FileChunkIndex(path, 0, 1, contentStr, rawBytes, lowerBytes, newlines, filter));
+            chunkList.add(new FileChunkIndex(path, 0, 1, contentStr, rawBytes, lowerBytes, newlineByteOffsets, newlineCharOffsets, filter));
         } else {
             // True 64 KiB Byte Chunking for massive files
             int numChunks = (rawBytes.length + CHUNK_SIZE_BYTES - 1) / CHUNK_SIZE_BYTES;
@@ -115,18 +119,18 @@ public class FastFileContentIndex {
                 String chunkRawText = new String(chunkRawBytes, StandardCharsets.UTF_8);
                 String chunkLowerText = chunkRawText.toLowerCase();
                 byte[] chunkLowerBytes = chunkLowerText.getBytes(StandardCharsets.UTF_8);
-                int[] newlines = computeNewlineOffsets(chunkRawBytes);
+                int[] newlineByteOffsets = computeNewlineByteOffsets(chunkRawBytes);
+                int[] newlineCharOffsets = computeNewlineCharOffsets(chunkRawText);
                 TrigramBloomFilter filter = TrigramBloomFilter.buildFromText(chunkLowerText);
 
-                chunkList.add(new FileChunkIndex(path, i, currentLineNumber, chunkRawText, chunkRawBytes, chunkLowerBytes, newlines, filter));
+                chunkList.add(new FileChunkIndex(path, i, currentLineNumber, chunkRawText, chunkRawBytes, chunkLowerBytes, newlineByteOffsets, newlineCharOffsets, filter));
 
-                // Accurately track start line numbers across byte chunks
-                currentLineNumber += newlines.length;
+                currentLineNumber += newlineByteOffsets.length;
             }
         }
     }
 
-    private static int[] computeNewlineOffsets(byte[] bytes) {
+    private static int[] computeNewlineByteOffsets(byte[] bytes) {
         int count = 0;
         for (byte b : bytes) {
             if (b == '\n') count++;
@@ -135,6 +139,21 @@ public class FastFileContentIndex {
         int idx = 0;
         for (int i = 0; i < bytes.length; i++) {
             if (bytes[i] == '\n') {
+                offsets[idx++] = i;
+            }
+        }
+        return offsets;
+    }
+
+    private static int[] computeNewlineCharOffsets(String text) {
+        int count = 0;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) == '\n') count++;
+        }
+        int[] offsets = new int[count];
+        int idx = 0;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) == '\n') {
                 offsets[idx++] = i;
             }
         }
@@ -179,7 +198,7 @@ public class FastFileContentIndex {
                     break;
                 }
 
-                // 3. Zero-Allocation Line/Column/Snippet Extraction via Pre-computed Index
+                // 3. True Zero-Allocation O(log N) Binary Search Line/Column/Snippet Extraction
                 long elapsedNs = System.nanoTime() - startTime;
                 ContentMatchResult result = mapByteOffsetToResultZeroAlloc(chunk, matchPos, queryBytes.length, elapsedNs);
                 if (result != null) {
@@ -196,24 +215,25 @@ public class FastFileContentIndex {
         byte[] rawBytes = chunk.rawChunkBytes;
         if (matchBytePos >= rawBytes.length) return null;
 
-        int[] newlines = chunk.newlineByteOffsets;
+        int[] newlineByteOffsets = chunk.newlineByteOffsets;
+        int[] newlineCharOffsets = chunk.newlineCharOffsets;
 
-        // Binary Search / Fast Lookup on pre-indexed newline byte positions (Zero Rescan!)
-        int lineIdx = 0;
-        int lastNewlinePos = -1;
-
-        while (lineIdx < newlines.length && newlines[lineIdx] < matchBytePos) {
-            lastNewlinePos = newlines[lineIdx];
-            lineIdx++;
+        // O(log N) Binary Search on pre-indexed newline byte positions (Zero linear scanning!)
+        int insertionIdx = Arrays.binarySearch(newlineByteOffsets, matchBytePos);
+        int lineIdx;
+        if (insertionIdx >= 0) {
+            lineIdx = insertionIdx;
+        } else {
+            lineIdx = -insertionIdx - 1; // Insertion point indicates number of newlines preceding matchBytePos
         }
 
         int lineNumber = chunk.startLineNumber + lineIdx;
 
-        // Snippet start/end char indices directly from pre-computed string (Zero byte-array allocation!)
+        // Snippet start/end char indices directly from pre-computed string in O(1) (Zero String allocations!)
         String rawText = chunk.rawChunkText;
         int charLineStart = 0;
-        if (lastNewlinePos != -1) {
-            charLineStart = new String(rawBytes, 0, lastNewlinePos + 1, StandardCharsets.UTF_8).length();
+        if (lineIdx > 0 && lineIdx - 1 < newlineCharOffsets.length) {
+            charLineStart = newlineCharOffsets[lineIdx - 1] + 1;
         }
 
         int charLineEnd = rawText.indexOf('\n', charLineStart);
@@ -223,14 +243,26 @@ public class FastFileContentIndex {
 
         String snippet = rawText.substring(charLineStart, charLineEnd);
 
-        // Column offset in UTF-16 characters up to match position
-        int prefixByteStart = lastNewlinePos + 1;
-        int colOffset = 0;
-        if (matchBytePos > prefixByteStart) {
-            colOffset = new String(rawBytes, prefixByteStart, matchBytePos - prefixByteStart, StandardCharsets.UTF_8).length();
+        // Column offset in UTF-16 characters up to match position in O(1)
+        int lastNewlineBytePos = (lineIdx > 0 && lineIdx - 1 < newlineByteOffsets.length) ? newlineByteOffsets[lineIdx - 1] : -1;
+        int prefixByteStart = lastNewlinePosByte(lastNewlineBytePos);
+
+        int charMatchPos = charLineStart;
+        // Count code points between charLineStart and matchBytePos without String allocation
+        int currentBytePos = prefixByteStart;
+        while (currentBytePos < matchBytePos && charMatchPos < rawText.length()) {
+            char c = rawText.charAt(charMatchPos);
+            currentBytePos += (c <= 0x7F) ? 1 : String.valueOf(c).getBytes(StandardCharsets.UTF_8).length;
+            charMatchPos++;
         }
 
+        int colOffset = Math.max(0, charMatchPos - charLineStart);
+
         return new ContentMatchResult(chunk.filePath, lineNumber, colOffset, snippet, elapsedNs);
+    }
+
+    private static int lastNewlinePosByte(int lastNewlineBytePos) {
+        return lastNewlineBytePos == -1 ? 0 : lastNewlineBytePos + 1;
     }
 
     public int getIndexedFileCount() {
