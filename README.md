@@ -19,8 +19,6 @@ Unlike heavy solutions (Elasticsearch, Lucene) that heavily tokenize and parse t
 ---
 
 
----
-
 ## Quick Start — Example
 
 ```java
