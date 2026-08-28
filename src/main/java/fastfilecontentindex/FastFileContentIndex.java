@@ -88,14 +88,19 @@ public class FastFileContentIndex {
 
         if (path.toLowerCase().endsWith(".pdf")) {
             try {
-                fastcontentparse.FastContentParse parser = new fastcontentparse.FastContentParse();
-                fastcontentparse.ParsedDocument doc = parser.parseFile(file.toPath());
-                String parsedText = doc.getText();
-                if (parsedText != null) {
-                    byte[] pdfBytes = parsedText.getBytes(StandardCharsets.UTF_8);
-                    processBytesToChunks(path, pdfBytes, fileChunks);
-                    fileChunksMap.put(path, fileChunks);
-                    return;
+                Class<?> parserClass = Class.forName("fastcontentparse.FastContentParse");
+                Object parser = parserClass.getDeclaredConstructor().newInstance();
+                java.lang.reflect.Method parseMethod = parserClass.getMethod("parseFile", java.nio.file.Path.class);
+                Object doc = parseMethod.invoke(parser, file.toPath());
+                if (doc != null) {
+                    java.lang.reflect.Method getTextMethod = doc.getClass().getMethod("getText");
+                    String parsedText = (String) getTextMethod.invoke(doc);
+                    if (parsedText != null) {
+                        byte[] pdfBytes = parsedText.getBytes(StandardCharsets.UTF_8);
+                        processBytesToChunks(path, pdfBytes, fileChunks);
+                        fileChunksMap.put(path, fileChunks);
+                        return;
+                    }
                 }
             } catch (Throwable ignored) {}
         }
