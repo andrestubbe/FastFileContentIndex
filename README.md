@@ -1,10 +1,10 @@
-# FastFileContentIndex 0.1.1 [ALPHA] — Ultra-Fast In-File Text Search & 3-Gram Bloom Index for Java
+# FastFileContentIndex 0.1.2 [ALPHA] — Ultra-Fast In-File Text Search & 3-Gram Bloom Index for Java
 
-[![Status](https://img.shields.io/badge/status-0.1.1-brightgreen.svg)](https://github.com/andrestubbe/FastFileContentIndex/releases/tag/0.1.1)
+[![Status](https://img.shields.io/badge/status-0.1.2-brightgreen.svg)](https://github.com/andrestubbe/FastFileContentIndex/releases/tag/0.1.2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Java](https://img.shields.io/badge/Java-17+-blue.svg)](https://www.java.com)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010+%2F%20Linux%20%2F%20macOS-lightgrey.svg)]()
-[![JitPack](https://img.shields.io/badge/JitPack-0.1.0-green.svg)](https://jitpack.io/#andrestubbe/FastFileContentIndex)
+[![JitPack](https://img.shields.io/badge/JitPack-ready-green.svg)](https://jitpack.io/#andrestubbe/FastFileContentIndex)
 
 ---
 
@@ -186,58 +186,12 @@ Add the JitPack repository and dependency to your `pom.xml`:
     <dependency>
         <groupId>com.github.andrestubbe</groupId>
         <artifactId>FastFileContentIndex</artifactId>
-        <version>0.1.0</version>
-    </dependency>
-    <!-- Hardware acceleration & ecosystem dependencies -->
-    <dependency>
-        <groupId>com.github.andrestubbe</groupId>
-        <artifactId>FastFileIndex</artifactId>
-        <version>0.1.1</version>
-    </dependency>
-    <dependency>
-        <groupId>com.github.andrestubbe</groupId>
-        <artifactId>FastFileSearch</artifactId>
-        <version>0.1.0</version>
-    </dependency>
-    <dependency>
-        <groupId>com.github.andrestubbe</groupId>
-        <artifactId>FastContentParse</artifactId>
-        <version>0.1.0</version>
-    </dependency>
-    <dependency>
-        <groupId>com.github.andrestubbe</groupId>
-        <artifactId>FastCore</artifactId>
-        <version>0.1.0</version>
-    </dependency>
-    <dependency>
-        <groupId>com.github.andrestubbe</groupId>
-        <artifactId>FastSIMD</artifactId>
-        <version>0.1.3</version>
-    </dependency>
-    <dependency>
-        <groupId>com.github.andrestubbe</groupId>
-        <artifactId>FastPointer</artifactId>
-        <version>0.1.1</version>
-    </dependency>
-    <dependency>
-        <groupId>com.github.andrestubbe</groupId>
-        <artifactId>FastMemory</artifactId>
-        <version>0.1.1</version>
-    </dependency>
-    <dependency>
-        <groupId>com.github.andrestubbe</groupId>
-        <artifactId>FastBytes</artifactId>
-        <version>0.1.1</version>
-    </dependency>
-    <dependency>
-        <groupId>com.github.andrestubbe</groupId>
-        <artifactId>FastIO</artifactId>
-        <version>0.1.1</version>
-    </dependency>
-    <dependency>
-        <groupId>com.github.andrestubbe</groupId>
-        <artifactId>FastANSI</artifactId>
         <version>0.1.2</version>
+    </dependency>
+    <dependency>
+        <groupId>com.github.andrestubbe</groupId>
+        <artifactId>fastio</artifactId>
+        <version>0.1.1</version>
     </dependency>
 </dependencies>
 ```
@@ -250,17 +204,8 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.andrestubbe:FastFileContentIndex:0.1.0'
-    implementation 'com.github.andrestubbe:FastFileIndex:0.1.1'
-    implementation 'com.github.andrestubbe:FastFileSearch:0.1.0'
-    implementation 'com.github.andrestubbe:FastContentParse:0.1.0'
-    implementation 'com.github.andrestubbe:FastCore:0.1.0'
-    implementation 'com.github.andrestubbe:FastSIMD:0.1.3'
-    implementation 'com.github.andrestubbe:FastPointer:0.1.1'
-    implementation 'com.github.andrestubbe:FastMemory:0.1.1'
-    implementation 'com.github.andrestubbe:FastBytes:0.1.1'
-    implementation 'com.github.andrestubbe:FastIO:0.1.1'
-    implementation 'com.github.andrestubbe:FastANSI:0.1.2'
+    implementation 'com.github.andrestubbe:FastFileContentIndex:0.1.2'
+    implementation 'com.github.andrestubbe:fastio:0.1.1'
 }
 ```
 

@@ -6,7 +6,7 @@
 
     <groupId>com.github.andrestubbe</groupId>
     <artifactId>FastFileContentIndex</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
     <packaging>jar</packaging>
 
     <name>FastFileContentIndex</name>
@@ -29,28 +29,13 @@
     <dependencies>
         <dependency>
             <groupId>com.github.andrestubbe</groupId>
-            <artifactId>FastFileIndex</artifactId>
+            <artifactId>fastio</artifactId>
             <version>0.1.1</version>
         </dependency>
         <dependency>
             <groupId>com.github.andrestubbe</groupId>
-            <artifactId>FastFileSearch</artifactId>
-            <version>0.1.0</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.andrestubbe</groupId>
-            <artifactId>FastContentParse</artifactId>
-            <version>0.1.4</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.andrestubbe</groupId>
-            <artifactId>FastRegex</artifactId>
-            <version>0.1.0</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.andrestubbe</groupId>
-            <artifactId>fastio</artifactId>
-            <version>0.1.0</version>
+            <artifactId>FastANSI</artifactId>
+            <version>0.1.3</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -63,26 +48,6 @@
             <artifactId>junit-jupiter-engine</artifactId>
             <version>5.10.0</version>
             <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.github.andrestubbe</groupId>
-            <artifactId>FastCore</artifactId>
-            <version>0.1.0</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.andrestubbe</groupId>
-            <artifactId>FastSIMD</artifactId>
-            <version>0.1.3</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.andrestubbe</groupId>
-            <artifactId>FastBytes</artifactId>
-            <version>0.1.1</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.andrestubbe</groupId>
-            <artifactId>FastANSI</artifactId>
-            <version>0.1.3</version>
         </dependency>
     </dependencies>
 
