@@ -1,6 +1,6 @@
-# FastFileContentIndex 0.1.2 [ALPHA] — Ultra-Fast In-File Text Search & 3-Gram Bloom Index for Java
+# FastFileContentIndex 0.1.3 [ALPHA] — Ultra-Fast In-File Text Search & 3-Gram Bloom Index for Java
 
-[![Status](https://img.shields.io/badge/status-0.1.2-brightgreen.svg)](https://github.com/andrestubbe/FastFileContentIndex/releases/tag/0.1.2)
+[![Status](https://img.shields.io/badge/status-0.1.3-brightgreen.svg)](https://github.com/andrestubbe/FastFileContentIndex/releases/tag/0.1.3)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Java](https://img.shields.io/badge/Java-17+-blue.svg)](https://www.java.com)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010+%2F%20Linux%20%2F%20macOS-lightgrey.svg)]()
