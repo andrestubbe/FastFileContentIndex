@@ -86,6 +86,13 @@ Traditional full-text search engines (Lucene, Elasticsearch) rely on heavy inver
 - **Lightweight Memory Footprint** — Requires only a fraction of the RAM used by traditional text search engines.
 - **Zero Dependencies** — Standalone, lightweight JAR (< 50 KB).
 
+| Feature | Apache Lucene / ES | Ripgrep (Full Disk Scan) | FastFileContentIndex |
+|:---|:---|:---|:---|
+| **RAM Footprint** | Gigabytes of heap / Lucene terms | 0 RAM (no index, re-reads disk)| **Compact 3-gram Bloom bitmask** |
+| **Search Query Latency**| Fast (once indexed, high overhead)| Disk I/O bound (seconds) | **Sub-millisecond bitmask rejection** |
+| **Indexing Throughput** | Heavy tokenizers / analyzers | No index | **FastIO native direct streaming** |
+| **Dependencies** | Massive multi-MB framework | External CLI binary | **Zero dependencies (< 50 KB JAR)** |
+
 ---
 
 ## Key Features
