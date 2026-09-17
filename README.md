@@ -69,8 +69,8 @@ public class FastContentIndexDemo {
 - [Key Features](#key-features)
 - [Real-World Use Cases](#real-world-use-cases)
 - [Performance Benchmarks](#performance-benchmarks)
-- [Technical Demos & Benchmarks](#technical-demos--benchmarks)
 - [Technical Architecture](#technical-architecture)
+- [Technical Demos & Benchmarks](#technical-demos--benchmarks)
 - [Installation](#installation)
 - [Documentation](#documentation)
 - [Platform Support](#platform-support)
@@ -144,17 +144,6 @@ Benchmark.benchmarkFastFileContentIndexQuery  thrpt    3  139860.251 ± 659822.1
 
 ---
 
-## Technical Demos & Benchmarks
-
-Run standalone verification demos or execute JMH throughput benchmarks:
-
-| Type | Target / Launcher | Source File | Description |
-| :--- | :--- | :--- | :--- |
-| **Interactive Demo** | [`run-demo.bat`](run-demo.bat) | [`Demo.java`](examples/Demo/src/main/java/fastfilecontentindex/Demo.java) | Multi-step live index scan, direct I/O ingestion, and TrueColor search |
-| **Throughput Benchmark** | [`run-benchmark.bat`](run-benchmark.bat) | [`Benchmark.java`](examples/Benchmark/src/main/java/fastfilecontentindex/Benchmark.java) | JMH benchmark evaluating 3-Gram Bloom queries and SIMD substring scans |
-
----
-
 ## Technical Architecture — The FastJava Pipeline Chain
 
 `FastFileContentIndex` operates as the second high-speed filtering layer in the unified FastJava Search & AI Infrastructure:
@@ -171,6 +160,17 @@ Run standalone verification demos or execute JMH throughput benchmarks:
 │  (LLM Context)   │       │  (SIMD Vector Match)   │       │   (PDF/Doc Extract)    │       │ (Syntax Chunking)  │
 └──────────────────┘       └────────────────────────┘       └────────────────────────┘       └────────────────────┘
 ```
+
+---
+
+## Technical Demos & Benchmarks
+
+Run standalone verification demos or execute JMH throughput benchmarks:
+
+| Type | Target / Launcher | Source File | Description |
+| :--- | :--- | :--- | :--- |
+| **Interactive Demo** | [`run-demo.bat`](run-demo.bat) | [`Demo.java`](examples/Demo/src/main/java/fastfilecontentindex/Demo.java) | Multi-step live index scan, direct I/O ingestion, and TrueColor search |
+| **Throughput Benchmark** | [`run-benchmark.bat`](run-benchmark.bat) | [`Benchmark.java`](examples/Benchmark/src/main/java/fastfilecontentindex/Benchmark.java) | JMH benchmark evaluating 3-Gram Bloom queries and SIMD substring scans |
 
 ---
 
