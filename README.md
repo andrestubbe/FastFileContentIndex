@@ -68,6 +68,8 @@ public class FastContentIndexDemo {
 - [Why FastFileContentIndex?](#why-fastfilecontentindex)
 - [Key Features](#key-features)
 - [Real-World Use Cases](#real-world-use-cases)
+- [Performance Benchmarks](#performance-benchmarks)
+- [Technical Demos & Benchmarks](#technical-demos--benchmarks)
 - [Technical Architecture](#technical-architecture)
 - [Installation](#installation)
 - [Documentation](#documentation)
@@ -133,12 +135,23 @@ Traditional full-text search engines (Lucene, Elasticsearch) rely on heavy inver
 `FastFileContentIndex` is engineered for ultra-fast full-text indexing and sub-millisecond query evaluation. In the official [JMH Benchmark](examples/Benchmark), the system measured query throughput across indexed codebases:
 
 ```text
-Benchmark                                             Mode  Cnt       Score        Error  Units
-IndexerBenchmark.benchmark3GramBloomQuery            thrpt    3  151327.851 ±  94216.118  ops/s
-IndexerBenchmark.benchmarkFastFileContentIndexQuery  thrpt    3  139860.251 ± 659822.168  ops/s
+Benchmark                                    Mode  Cnt       Score        Error  Units
+Benchmark.benchmark3GramBloomQuery          thrpt    3  151327.851 ±  94216.118  ops/s
+Benchmark.benchmarkFastFileContentIndexQuery  thrpt    3  139860.251 ± 659822.168  ops/s
 ```
 
 > **151,000 Queries per Second**: `FastFileContentIndex` evaluates 3-gram Bloom filters and SIMD substring candidate verification in **~6.6 microseconds per query**.
+
+---
+
+## Technical Demos & Benchmarks
+
+Run standalone verification demos or execute JMH throughput benchmarks:
+
+| Type | Target / Launcher | Source File | Description |
+| :--- | :--- | :--- | :--- |
+| **Interactive Demo** | [`run-demo.bat`](run-demo.bat) | [`Demo.java`](examples/Demo/src/main/java/fastfilecontentindex/Demo.java) | Multi-step live index scan, direct I/O ingestion, and TrueColor search |
+| **Throughput Benchmark** | [`run-benchmark.bat`](run-benchmark.bat) | [`Benchmark.java`](examples/Benchmark/src/main/java/fastfilecontentindex/Benchmark.java) | JMH benchmark evaluating 3-Gram Bloom queries and SIMD substring scans |
 
 ---
 

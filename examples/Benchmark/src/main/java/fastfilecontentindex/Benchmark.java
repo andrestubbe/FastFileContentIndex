@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 @Warmup(iterations = 2, time = 1)
 @Measurement(iterations = 3, time = 1)
 @Fork(1)
-public class IndexerBenchmark {
+public class Benchmark {
 
     private FastFileContentIndex index;
 
